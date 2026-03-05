@@ -1,8 +1,7 @@
-<x-app-layout>
+<x-layouts.app>
     <x-slot name="header">
-        Dashboard
+        {{ __('Dashboard') }}
     </x-slot>
 
-    <livewire:dashboard />
-
-</x-app-layout>
+    <livewire:article-processor/>
+</x-layouts.app>

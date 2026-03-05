@@ -23,7 +23,8 @@ new class extends Component {
 
         <div class="d-flex align-items-center gap-2 gap-lg-3">
             <!-- Mobile Toggle (Offcanvas) -->
-            <button class="btn text-primary border-0 p-2 d-md-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileSidebar" aria-controls="mobileSidebar">
+            <button class="btn text-primary border-0 p-2 d-md-none" type="button" data-bs-toggle="offcanvas"
+                    data-bs-target="#mobileSidebar" aria-controls="mobileSidebar">
                 <i class="bi bi-list fs-4"></i>
             </button>
 
@@ -33,14 +34,14 @@ new class extends Component {
             </button>
 
             <h5 class="m-0 font-serif fw-bold d-none d-md-block text-truncate" style="max-width: 300px;">
-                {{ $header ?? 'Restaurant Management' }}
+                {{ $header ?? 'Dashboard' }}
             </h5>
         </div>
 
         <ul class="navbar-nav ms-auto flex-row align-items-center gap-2 gap-lg-3">
 
             <li class="nav-item">
-                <livewire:theme-toggle />
+                <livewire:theme-toggle/>
             </li>
 
             <li class="nav-item">
