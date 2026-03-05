@@ -1,0 +1,122 @@
+@import "bootstrap/dist/css/bootstrap.min.css";
+@import "bootstrap-icons/font/bootstrap-icons.min.css";
+
+:root {
+    /* Enterprise Palette */
+    --primary: #6366f1; /* Indigo 500 */
+    --primary-dark: #4f46e5; /* Indigo 600 */
+    --text-main: #0f172a; /* Slate 900 */
+    --text-sub: #64748b; /* Slate 500 */
+    --bg-base: #F8FAFC; /* Light Slate Background */
+}
+
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    background-color: var(--bg-base);
+    color: var(--text-main);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Abstract Animated Mesh Background (Matches Landing Page) */
+.bg-mesh {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    background: radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(14, 165, 233, 0.08) 0px, transparent 50%),
+    radial-gradient(at 50% 50%, rgba(255, 255, 255, 0.8) 0px, transparent 50%);
+    background-color: var(--bg-base);
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+.card-login-enterprise {
+    border-radius: 24px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+}
+
+.form-control-enterprise {
+    padding: 0.8rem 1rem;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.form-control-enterprise:focus {
+    background-color: #fff;
+    border-color: #6366f1; /* Indigo 500 */
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+.btn-enterprise {
+    background-color: #0f172a; /* Slate 900 */
+    color: white;
+    border-radius: 12px;
+    padding: 0.8rem;
+    font-weight: 600;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+
+.btn-enterprise:hover {
+    background-color: #1e293b;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px -5px rgba(15, 23, 42, 0.15);
+    color: white;
+}
+
+.social-btn {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    font-weight: 500;
+    color: #475569;
+    transition: all 0.2s;
+}
+
+.social-btn:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+
+/* NProgress */
+#nprogress .bar {
+    background: var(--brand-color) !important;
+    height: 3px !important;
+}
+
+#nprogress .peg {
+    box-shadow: 0 0 10px var(--brand-color), 0 0 5px var(--brand-color) !important;
+}
+
+#nprogress .spinner-icon {
+    border-top-color: var(--brand-color) !important;
+    border-left-color: var(--brand-color) !important;
+}
