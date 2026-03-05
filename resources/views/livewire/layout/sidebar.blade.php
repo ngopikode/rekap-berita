@@ -38,8 +38,7 @@ $menuSections = [
         'items' => [
             ['route' => 'dashboard', 'icon' => 'bi bi-grid-fill', 'label' => 'Dashboard'],
             ['route' => 'publishers.index', 'icon' => 'bi bi-collection', 'label' => 'Manajemen Media'],
-//            ['route' => 'menu.index', 'icon' => 'bi bi-journal-richtext', 'label' => 'Menu Restoran'],
-//            ['route' => 'orders.index', 'icon' => 'bi bi-receipt-cutoff', 'label' => 'Pesanan Masuk'],
+            ['route' => 'articles.index', 'icon' => 'bi bi-link-45deg', 'label' => 'Manajemen Berita'],
         ]
     ],
     [

@@ -20,6 +20,7 @@ Route::middleware(['auth'])->group(function () {
     // Menggunakan view dashboard.blade.php yang memanggil komponen livewire
     Route::view('/dashboard', 'dashboard')->name('dashboard');
     Volt::route('/publishers', 'publisher-management')->name('publishers.index');
+    Volt::route('/articles', 'article-management')->name('articles.index');
     Route::view('/profile', 'profile')->name('profile');
 });
 
