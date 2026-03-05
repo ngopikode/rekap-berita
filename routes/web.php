@@ -14,9 +14,9 @@ use Livewire\Volt\Volt;
 |
 */
 
-Route::view('/', 'welcome');
 
 Route::middleware(['auth'])->group(function () {
+    Route::get('/', fn() => redirect()->route('dashboard'));
     // Menggunakan view dashboard.blade.php yang memanggil komponen livewire
     Route::view('/dashboard', 'dashboard')->name('dashboard');
     Volt::route('/publishers', 'publisher-management')->name('publishers.index');
