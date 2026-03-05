@@ -317,8 +317,10 @@ $export = function () {
 
     {{-- 2. TABEL REKAP & FILTER --}}
     <div class="card position-relative">
-        <div wire:loading wire:target="selectedMonth, selectedYear" class="loading-overlay">
-            <div class="spinner-grow text-brand" role="status"></div>
+        <div wire:loading wire:target="selectedMonth, selectedYear">
+            <div class="loading-overlay">
+                <div class="spinner-grow text-brand" role="status"></div>
+            </div>
         </div>
 
         <div
