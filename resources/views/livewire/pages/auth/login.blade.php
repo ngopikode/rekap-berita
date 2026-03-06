@@ -5,7 +5,8 @@ use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
-new #[Layout('layouts.guest')] class extends Component {
+new #[Layout('layouts.guest')]
+class extends Component {
     public LoginForm $form;
 
     /**
@@ -19,7 +20,7 @@ new #[Layout('layouts.guest')] class extends Component {
 
         Session::regenerate();
 
-        $this->redirectIntended(default: route('dashboard', absolute: false), navigate: true);
+        $this->redirectIntended(default: route('dashboard', absolute: false));
     }
 }; ?>
 
@@ -29,7 +30,9 @@ new #[Layout('layouts.guest')] class extends Component {
 
             <!-- Header -->
             <div class="text-center mb-4">
-                <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3 shadow-sm" style="width: 64px; height: 64px;">
+                <div
+                    class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3 shadow-sm"
+                    style="width: 64px; height: 64px;">
                     <i class="bi bi-newspaper fs-2"></i>
                 </div>
                 <h3 class="fw-bold text-dark">Rekap Berita</h3>
@@ -37,7 +40,7 @@ new #[Layout('layouts.guest')] class extends Component {
             </div>
 
             <!-- Session Status -->
-            <x-auth-session-status class="mb-4" :status="session('status')" />
+            <x-auth-session-status class="mb-4" :status="session('status')"/>
 
             <form wire:submit="login">
                 <!-- Email Address -->
@@ -47,7 +50,7 @@ new #[Layout('layouts.guest')] class extends Component {
                            placeholder="name@example.com" required autofocus autocomplete="username">
                     <label for="email">Email Address</label>
                     @error('form.email')
-                        <div class="invalid-feedback">{{ $message }}</div>
+                    <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
                 </div>
 
@@ -58,7 +61,7 @@ new #[Layout('layouts.guest')] class extends Component {
                            placeholder="Password" required autocomplete="current-password">
                     <label for="password">Password</label>
                     @error('form.password')
-                        <div class="invalid-feedback">{{ $message }}</div>
+                    <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
                 </div>
 
