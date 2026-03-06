@@ -184,7 +184,7 @@ $export = function () {
             .table-rekap th, .table-rekap td {
                 white-space: nowrap;
                 vertical-align: middle;
-                padding: 0.75rem 1rem;
+                padding: 0.75rem;
                 color: var(--ezmenu-text-main);
                 border-bottom: 1px solid var(--ezmenu-border-color);
             }
