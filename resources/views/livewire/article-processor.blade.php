@@ -51,12 +51,16 @@ $generatePreview = function () {
 
     $tempData = [];
     $skippedCount = 0;
-    $fallbackDate = Carbon::create($this->selectedYear, $this->selectedMonth, now()->day)->toDateString(); // Default ke hari ini di bulan tsb
+    $fallbackDate = Carbon::create($this->selectedYear, $this->selectedMonth, now()->day)->toDateString();
+
+    // 🌟 PERBAIKAN PERFORMA: Ambil ID Publisher milik user ini sekali saja di luar looping
+    $userPublisherIds = \App\Models\Publisher::where('user_id', auth()->id())->pluck('id');
 
     foreach ($urls as $url) {
         $urlHash = md5($url);
-        // OPTIMASI: Hanya cek keberadaan (exists) tanpa me-load data
-        if (Article::where('url_hash', $urlHash)->exists()) {
+
+        // OPTIMASI: Cek apakah URL Hash ini ada di dalam daftar ID Publisher milik user ini
+        if (Article::where('url_hash', $urlHash)->whereIn('publisher_id', $userPublisherIds)->exists()) {
             $skippedCount++;
             continue;
         }
