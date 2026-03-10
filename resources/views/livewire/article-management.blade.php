@@ -186,8 +186,19 @@ $recrawl = function ($id) {
                 }
 
                 $textPatterns = [
+                    // 1. Tag <time datetime="...">
                     '/<time[^>]*datetime=[\'"]([^\'"]+)[\'"]/i',
-                    '/<[^>]*class=[\'"][^\'"]*(?:entry-date|post-date|published|post_date|date)[^\'"]*[\'"][^>]*>(.*?)<\/(?:span|div|time|p|a|li)>/is',
+
+                    // 2. Tag apa pun yang punya atribut datetime="..." (Contoh: <span datetime="...">)
+                    '/<[^>]*datetime=[\'"]([^\'"]+)[\'"]/i',
+
+                    // 3. INI YANG TADI HILANG! Tag apa pun di dalam HTML yang punya itemprop="datePublished"
+                    '/<[^>]*itemprop=[\'"][^\'"]*datePublished[^\'"]*[\'"][^>]*>(.*?)<\/(?:span|div|time|p|a|li|b|strong)>/is',
+
+                    // 4. Tag class umum pembungkus tanggal (kutip tunggal/ganda). Ditambah class 'updated' khas web kamu
+                    '/<[^>]*class=[\'"][^\'"]*(?:entry-date|post-date|published|post_date|date|updated)[^\'"]*[\'"][^>]*>(.*?)<\/(?:span|div|time|p|a|li|b|strong)>/is',
+
+                    // 5. Sapu jagat tulisan tanggal biasa
                     '/([0-9]{1,2}\s+(?:Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember)\s+[0-9]{4})/i'
                 ];
 
