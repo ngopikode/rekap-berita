@@ -193,7 +193,7 @@ $recrawl = function ($id) {
                         $parsedDate = Carbon::parse(trim($dateString));
 
                         // Cegah parsing ngawur (pastikan tahun logis)
-                        if ($parsedDate->year > 2000) {
+                        if ($parsedDate->year > 2020) {
                             $publishedDate = $parsedDate->toDateString();
                             break; // Berhenti mencari karena sudah sukses
                         }
