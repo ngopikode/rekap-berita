@@ -3,6 +3,8 @@
 use App\Models\Article;
 use App\Models\Publisher;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Livewire\WithPagination;
 use function Livewire\Volt\{state, computed, layout, uses};
 
@@ -123,6 +125,67 @@ $save = function () {
     }
 
     $this->closeModal();
+};
+
+// Aksi: Crawl Ulang Data Spesifik
+$recrawl = function ($id) {
+    $publisherIds = Publisher::where('user_id', auth()->id())->pluck('id');
+    $article = Article::whereIn('publisher_id', $publisherIds)->find($id);
+
+    if (!$article) {
+        $this->dispatch('notify', ['type' => 'danger', 'message' => 'Berita tidak ditemukan.']);
+        return;
+    }
+
+    try {
+        $response = Http::timeout(5)
+            ->withHeaders(['User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'])
+            ->get($article->url);
+
+        if ($response->successful()) {
+            $html = $response->body();
+            $publishedDate = null;
+
+            // Pola pencarian tanggal (sama seperti di scraper massal)
+            $patterns = [
+                '/<meta property="article:published_time" content="([^"]+)"/',
+                '/<time[^>]*datetime="([^"]+)"/',
+                '/"datePublished"\s*:\s*"([^"]+)"/',
+                '/<meta name="pubdate" content="([^"]+)"/',
+                '/<meta name="date" content="([^"]+)"/'
+            ];
+
+            foreach ($patterns as $pattern) {
+                if (preg_match($pattern, $html, $matches)) {
+                    try {
+                        $parsedDate = Carbon::parse($matches[1]);
+                        if ($parsedDate->year > 2000) {
+                            $publishedDate = $parsedDate->toDateString();
+                            break;
+                        }
+                    } catch (\Exception $e) {
+                        // abaikan dan cari pola lain
+                    }
+                }
+            }
+
+            if ($publishedDate) {
+                if ($publishedDate !== $article->published_at) {
+                    $article->update(['published_at' => $publishedDate]);
+                    $this->dispatch('notify', ['type' => 'success', 'message' => 'Tanggal berhasil diperbarui menjadi ' . Carbon::parse($publishedDate)->translatedFormat('d M Y')]);
+                } else {
+                    $this->dispatch('notify', ['type' => 'success', 'message' => 'Tanggal sudah benar / up-to-date.']);
+                }
+            } else {
+                $this->dispatch('notify', ['type' => 'warning', 'message' => 'Gagal menemukan tag tanggal di dalam halaman web tersebut.']);
+            }
+        } else {
+            $this->dispatch('notify', ['type' => 'danger', 'message' => 'Web tujuan tidak bisa diakses saat ini (Mungkin error atau memblokir bot).']);
+        }
+    } catch (\Exception $e) {
+        Log::error("Gagal recrawl URL: {$article->url} - " . $e->getMessage());
+        $this->dispatch('notify', ['type' => 'danger', 'message' => 'Koneksi ke web tersebut gagal (Timeout).']);
+    }
 };
 
 // Aksi: Hapus Data
@@ -256,6 +319,22 @@ $delete = function ($id) {
                                 </td>
                                 <td class="text-end px-4">
 
+                                    {{-- TOMBOL CRAWL ULANG (BARU) --}}
+                                    <button wire:click="recrawl({{ $article->id }})"
+                                            wire:loading.attr="disabled"
+                                            wire:target="recrawl({{ $article->id }})"
+                                            class="btn btn-sm btn-light text-success me-1"
+                                            style="border: 1px solid var(--ezmenu-border-color); border-radius: 0.5rem; width: 32px; height: 32px;"
+                                            title="Crawl Tanggal Ulang dari Web">
+                                        <span wire:loading.remove wire:target="recrawl({{ $article->id }})">
+                                            <i class="bi bi-arrow-clockwise"></i>
+                                        </span>
+                                        <span wire:loading wire:target="recrawl({{ $article->id }})">
+                                            <span class="spinner-border spinner-border-sm" role="status"
+                                                  aria-hidden="true"></span>
+                                        </span>
+                                    </button>
+
                                     {{-- TOMBOL EDIT dengan Loading --}}
                                     <button wire:click="openEditModal({{ $article->id }})"
                                             wire:loading.attr="disabled"
@@ -323,7 +402,7 @@ $delete = function ($id) {
 
         @if($this->articles->hasPages())
             <div class="card-footer bg-transparent border-top-0 px-4 py-3">
-                {{ $this->articles->links() }}
+                {{ $this->articles->links('livewire::bootstrap') }}
             </div>
         @endif
     </div>

@@ -24,20 +24,21 @@ $daysInMonth = computed(function () {
     return Carbon::create($this->selectedYear, $this->selectedMonth, 1)->daysInMonth;
 });
 
-// Computed: Mendapatkan data sesuai filter
+// Computed: Mendapatkan data sesuai filter dengan Optimasi N+1
 $publishers = computed(function () {
     $startOfMonth = Carbon::create($this->selectedYear, $this->selectedMonth, 1)->startOfMonth();
     $endOfMonth = $startOfMonth->copy()->endOfMonth();
 
     return Publisher::where('user_id', auth()->id())
         ->with(['articles' => function ($query) use ($startOfMonth, $endOfMonth) {
-            $query->whereBetween('published_at', [$startOfMonth, $endOfMonth]);
+            $query->select('id', 'publisher_id', 'published_at') // OPTIMASI: Hanya ambil kolom yang dibutuhkan
+            ->whereBetween('published_at', [$startOfMonth, $endOfMonth]);
         }])
         ->orderBy('name', 'asc')
         ->get();
 });
 
-// Fungsi 1: Generate Preview
+// Fungsi 1: Generate Preview (Dengan Scraper Tanggal Lanjutan)
 $generatePreview = function () {
     $urls = collect(explode("\n", $this->bulkLinks))
         ->map(fn($url) => trim($url))
@@ -50,10 +51,11 @@ $generatePreview = function () {
 
     $tempData = [];
     $skippedCount = 0;
-    $fallbackDate = Carbon::create($this->selectedYear, $this->selectedMonth, 1)->toDateString();
+    $fallbackDate = Carbon::create($this->selectedYear, $this->selectedMonth, now()->day)->toDateString(); // Default ke hari ini di bulan tsb
 
     foreach ($urls as $url) {
         $urlHash = md5($url);
+        // OPTIMASI: Hanya cek keberadaan (exists) tanpa me-load data
         if (Article::where('url_hash', $urlHash)->exists()) {
             $skippedCount++;
             continue;
@@ -70,15 +72,41 @@ $generatePreview = function () {
             $publishedDate = $fallbackDate;
 
             try {
-                $response = Http::timeout(5)->get($url);
+                // Tambahkan header User-Agent agar tidak diblokir oleh media tertentu
+                $response = Http::timeout(5)
+                    ->withHeaders(['User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'])
+                    ->get($url);
+
                 if ($response->successful()) {
                     $html = $response->body();
-                    if (preg_match('/<meta property="article:published_time" content="([^"]+)"/', $html, $matches)) {
-                        $publishedDate = Carbon::parse($matches[1])->toDateString();
+
+                    // PENINGKATAN: Pola Regex Berlapis untuk mencari tanggal
+                    $patterns = [
+                        '/<meta property="article:published_time" content="([^"]+)"/', // Standar Open Graph
+                        '/<time[^>]*datetime="([^"]+)"/', // Tag Time HTML5
+                        '/"datePublished"\s*:\s*"([^"]+)"/', // JSON-LD Schema
+                        '/<meta name="pubdate" content="([^"]+)"/', // Meta Pubdate Lama
+                        '/<meta name="date" content="([^"]+)"/' // Meta Date Standar
+                    ];
+
+                    foreach ($patterns as $pattern) {
+                        if (preg_match($pattern, $html, $matches)) {
+                            // Coba parse tanggal yang ditemukan. Jika valid, gunakan itu.
+                            try {
+                                $parsedDate = Carbon::parse($matches[1]);
+                                // Cegah tahun aneh seperti 1970 (error parsing)
+                                if ($parsedDate->year > 2000) {
+                                    $publishedDate = $parsedDate->toDateString();
+                                    break; // Berhenti mencari jika sudah ketemu format valid
+                                }
+                            } catch (\Exception $e) {
+                                // Lanjut ke pola berikutnya jika parsing gagal
+                            }
+                        }
                     }
                 }
             } catch (\Exception $e) {
-                Log::warning("Gagal scrape URL: $url");
+                Log::warning("Gagal scrape URL: $url - " . $e->getMessage());
             }
 
             $tempData[] = [
@@ -99,7 +127,7 @@ $generatePreview = function () {
     }
 
     if (empty($tempData)) {
-        $this->dispatch('notify', ['type' => 'danger', 'message' => "Tidak ada link yang valid."]);
+        $this->dispatch('notify', ['type' => 'danger', 'message' => "Tidak ada link yang valid atau bisa diakses."]);
         return;
     }
 
@@ -116,20 +144,23 @@ $saveData = function () {
     $count = 0;
     foreach ($this->previewData as $item) {
         try {
+            // Validasi manual sebelum simpan
+            if (empty(trim($item['publisher_name'])) || empty($item['published_at'])) continue;
+
             $publisher = Publisher::firstOrCreate(
-                ['name' => strtoupper($item['publisher_name']), 'user_id' => auth()->id()],
+                ['name' => strtoupper(trim($item['publisher_name'])), 'user_id' => auth()->id()],
                 ['user_id' => auth()->id()]
             );
 
             Article::create([
                 'publisher_id' => $publisher->id,
-                'url' => $item['url'],
-                'url_hash' => md5($item['url']),
+                'url' => trim($item['url']),
+                'url_hash' => md5(trim($item['url'])),
                 'published_at' => $item['published_at'],
             ]);
             $count++;
         } catch (\Exception $e) {
-            Log::error("Gagal simpan artikel: " . $e->getMessage());
+            Log::error("Gagal simpan artikel dari modal rekap: " . $e->getMessage());
         }
     }
 
@@ -165,9 +196,6 @@ $export = function () {
 <div>
     @push('custom-styles')
         <style>
-            /* HANYA CSS UNTUK FUNGSI SCROLL & STICKY TABEL */
-            /* Selebihnya menggunakan variabel dari app.css milikmu */
-
             .table-rekap-wrapper {
                 position: relative;
                 max-height: 65vh;
@@ -202,7 +230,6 @@ $export = function () {
                 border-bottom: 2px solid var(--ezmenu-border-color);
             }
 
-            /* Kolom Kiri Nempel (Sticky) */
             .sticky-col {
                 position: sticky;
                 left: 0;
@@ -215,11 +242,10 @@ $export = function () {
                 z-index: 22 !important;
             }
 
-            /* Loading Overlay menyatu dengan tema */
             .loading-overlay {
                 position: absolute;
                 inset: 0;
-                background-color: var(--ezmenu-bg-navbar); /* Pakai warna navbar yang ada efek blur & alpha */
+                background-color: var(--ezmenu-bg-navbar);
                 z-index: 50;
                 display: flex;
                 flex-direction: column;
@@ -228,7 +254,6 @@ $export = function () {
                 border-radius: 1.25rem;
             }
 
-            /* Custom Scrollbar */
             ::-webkit-scrollbar {
                 width: 6px;
                 height: 6px;
@@ -284,12 +309,12 @@ $export = function () {
         <p class="text-muted small mb-0">Otomatisasi laporan tautan berita harian.</p>
     </div>
 
-    {{-- 1. FORM INPUT LINK (Menggunakan class .card bawaan aplikasimu) --}}
+    {{-- 1. FORM INPUT LINK --}}
     <div class="card mb-4 position-relative">
         <div wire:loading wire:target="generatePreview">
             <div class="loading-overlay">
                 <div class="spinner-border text-brand" role="status"></div>
-                <span class="mt-2 text-brand fw-medium font-serif">Memproses URL...</span>
+                <span class="mt-2 text-brand fw-medium font-serif">Membaca Halaman Media...</span>
             </div>
         </div>
 
@@ -316,7 +341,7 @@ $export = function () {
     </div>
 
     {{-- 2. TABEL REKAP & FILTER --}}
-    <div class="card position-relative">
+    <div class="card position-relative mb-4">
         <div wire:loading wire:target="selectedMonth, selectedYear">
             <div class="loading-overlay">
                 <div class="spinner-grow text-brand" role="status"></div>
@@ -380,18 +405,21 @@ $export = function () {
                         </thead>
                         <tbody>
                         @foreach ($this->publishers as $index => $publisher)
-                            <tr>
+                            <tr wire:key="pub-{{ $publisher->id }}">
                                 <td class="sticky-col text-start fw-medium px-4">
                                     {{ $publisher->name }}
                                 </td>
                                 @php
                                     $total = 0;
-                                    $articlesByDay = $publisher->articles->groupBy(fn($article) => Carbon::parse($article->published_at)->day);
+                                    // OPTIMASI: Pastikan tidak melakukan query lagi di dalam loop
+                                    $articlesByDay = $publisher->articles->groupBy(function($article) {
+                                        return Carbon::parse($article->published_at)->day;
+                                    });
                                 @endphp
 
                                 @for ($day = 1; $day <= $this->daysInMonth; $day++)
                                     @php
-                                        $count = $articlesByDay->get($day, collect())->count();
+                                        $count = isset($articlesByDay[$day]) ? $articlesByDay[$day]->count() : 0;
                                         $total += $count;
                                     @endphp
                                     <td>
@@ -413,16 +441,16 @@ $export = function () {
                             </td>
                             @php
                                 $grandTotal = 0;
-                                $userPublisherIds = \App\Models\Publisher::where('user_id', auth()->id())->pluck('id');
-                                $articlesAll = \App\Models\Article::whereIn('publisher_id', $userPublisherIds)
-                                                ->whereMonth('published_at', $this->selectedMonth)
-                                                ->whereYear('published_at', $this->selectedYear)
-                                                ->get();
-                                $articlesByDayAll = $articlesAll->groupBy(fn($a) => Carbon::parse($a->published_at)->day);
+                                // OPTIMASI: Menghitung total harian menggunakan collection yang sudah dimuat, bukan query baru
+                                $allArticles = $this->publishers->pluck('articles')->flatten();
+                                $allArticlesByDay = $allArticles->groupBy(function($article) {
+                                    return Carbon::parse($article->published_at)->day;
+                                });
                             @endphp
+
                             @for ($day = 1; $day <= $this->daysInMonth; $day++)
                                 @php
-                                    $count = $articlesByDayAll->get($day, collect())->count();
+                                    $count = isset($allArticlesByDay[$day]) ? $allArticlesByDay[$day]->count() : 0;
                                     $grandTotal += $count;
                                 @endphp
                                 <td class="fw-bold text-dark py-3">
@@ -439,13 +467,12 @@ $export = function () {
         </div>
     </div>
 
-    {{-- MODAL PREVIEW (Menyesuaikan dengan app.css sepenuhnya) --}}
+    {{-- MODAL PREVIEW --}}
     @if($showPreviewModal)
         <div class="modal show d-block" tabindex="-1"
              style="background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); z-index: 9999;">
             <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
 
-                {{-- Menggunakan background dan border dari app.css milikmu --}}
                 <div class="modal-content shadow-lg"
                      style="background-color: var(--ezmenu-bg-card); border: 1px solid var(--ezmenu-border-color); border-radius: 1.25rem;">
 
@@ -463,15 +490,33 @@ $export = function () {
                             <h5 class="modal-title font-serif fw-bold text-dark d-flex align-items-center gap-2">
                                 <i class="bi bi-shield-check text-brand fs-4"></i> Konfirmasi Data
                             </h5>
-                            <p class="text-muted small mb-0 mt-1">Pastikan nama media dan tanggal sudah sesuai.</p>
+                            <p class="text-muted small mb-0 mt-1">Pastikan nama media dan tanggal sudah sesuai sebelum
+                                menyimpan.</p>
                         </div>
-                        <button type="button" class="btn-close" wire:click="cancelPreview"></button>
+
+                        {{-- Tombol Tutup X dengan SweetAlert --}}
+                        <button type="button" class="btn-close"
+                                x-data
+                                @click="
+                                    Swal.fire({
+                                        title: 'Batalkan input?',
+                                        text: 'Data yang sudah diproses akan hilang.',
+                                        icon: 'warning',
+                                        showCancelButton: true,
+                                        confirmButtonText: 'Ya, Batal',
+                                        cancelButtonText: 'Kembali',
+                                        confirmButtonColor: '#dc3545',
+                                        reverseButtons: true,
+                                        customClass: { popup: 'rounded-4 border-0' }
+                                    }).then((res) => {
+                                        if(res.isConfirmed) $wire.cancelPreview();
+                                    })
+                                "></button>
                     </div>
 
                     <div class="modal-body p-3 p-md-4 pt-0">
                         <div class="d-flex flex-column gap-3">
                             @foreach($previewData as $index => $item)
-                                {{-- Tiap baris data menggunakan border dari app.css --}}
                                 <div class="row align-items-center gy-3 p-3 mx-0"
                                      style="border: 1px solid var(--ezmenu-border-color); border-radius: 0.75rem;"
                                      wire:key="preview-{{ $index }}">
@@ -483,7 +528,8 @@ $export = function () {
                                             <div style="width: 100%;">
                                                 <span class="d-block text-muted small fw-medium mb-1">URL Berita</span>
                                                 <a href="{{ $item['url'] }}" target="_blank"
-                                                   class="text-decoration-none text-brand d-block text-truncate fw-medium">
+                                                   class="text-decoration-none text-brand d-block text-truncate fw-medium"
+                                                   title="{{ $item['url'] }}">
                                                     {{ $item['url'] }}
                                                 </a>
                                             </div>
@@ -492,15 +538,14 @@ $export = function () {
 
                                     <div class="col-6 col-lg-3">
                                         <label class="form-label small text-muted fw-medium mb-1">Nama Media</label>
-                                        {{-- Class .form-control akan otomatis ditarik dari app.css milikmu --}}
-                                        <input type="text" class="form-control text-uppercase"
-                                               wire:model="previewData.{{ $index }}.publisher_name">
+                                        <input type="text" class="form-control text-uppercase fw-bold"
+                                               wire:model="previewData.{{ $index }}.publisher_name" required>
                                     </div>
 
                                     <div class="col-6 col-lg-3">
                                         <label class="form-label small text-muted fw-medium mb-1">Tanggal Rilis</label>
                                         <input type="date" class="form-control"
-                                               wire:model="previewData.{{ $index }}.published_at">
+                                               wire:model="previewData.{{ $index }}.published_at" required>
                                     </div>
 
                                     <div class="col-12 col-lg-1 text-end text-lg-center">
@@ -515,13 +560,33 @@ $export = function () {
                     </div>
 
                     <div class="modal-footer border-top-0 px-4 py-3 bg-transparent">
+                        {{-- Tombol Batal Text dengan SweetAlert --}}
                         <button type="button" class="btn btn-light"
                                 style="background-color: var(--ezmenu-border-color); color: var(--ezmenu-text-main); border: none; border-radius: 0.75rem;"
-                                wire:click="cancelPreview">Batal
+                                x-data
+                                @click="
+                                    Swal.fire({
+                                        title: 'Batalkan input?',
+                                        text: 'Data yang sudah diproses akan hilang.',
+                                        icon: 'warning',
+                                        showCancelButton: true,
+                                        confirmButtonText: 'Ya, Batal',
+                                        cancelButtonText: 'Kembali',
+                                        confirmButtonColor: '#dc3545',
+                                        reverseButtons: true,
+                                        customClass: { popup: 'rounded-4 border-0' }
+                                    }).then((res) => {
+                                        if(res.isConfirmed) $wire.cancelPreview();
+                                    })
+                                ">Batal
                         </button>
+
                         <button type="button" class="btn btn-brand px-4" style="border-radius: 0.75rem;"
                                 wire:click="saveData" wire:loading.attr="disabled">
-                            <i class="bi bi-save me-1"></i> Simpan ({{ count($previewData) }})
+                            <span wire:loading.remove wire:target="saveData"><i class="bi bi-save me-1"></i> Simpan ({{ count($previewData) }})</span>
+                            <span wire:loading wire:target="saveData"><span
+                                    class="spinner-border spinner-border-sm me-1"
+                                    role="status"></span> Menyimpan...</span>
                         </button>
                     </div>
                 </div>
@@ -529,4 +594,6 @@ $export = function () {
         </div>
     @endif
 
+    {{-- Script CDN SweetAlert2 --}}
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </div>
