@@ -192,7 +192,7 @@ $generatePreview = function () {
 // Fungsi 2: Simpan Data
 $saveData = function () {
     $count = 0;
-    $skipped = 0; // Menghitung data yang dilewati karena sudah ada
+    $skipped = 0;
 
     foreach ($this->previewData as $item) {
         try {
@@ -206,22 +206,21 @@ $saveData = function () {
 
             $urlHash = md5(trim($item['url']) . '_' . auth()->id());
 
-            // PERBAIKAN: Gunakan firstOrCreate agar kebal terhadap klik dobel / data sisa
-            $article = Article::firstOrCreate(
-                ['url_hash' => $urlHash], // Kunci pencariannya
-                [ // Data yang diisi jika kuncinya belum ada
-                    'publisher_id' => $publisher->id,
-                    'url' => trim($item['url']),
-                    'published_at' => $item['published_at'],
-                ]
-            );
-
-            // Cek apakah data ini benar-benar baru dimasukkan atau cuma data lama
-            if ($article->wasRecentlyCreated) {
-                $count++;
-            } else {
+            // LOGIKA PALING LURUS: Cek dulu sebelum maksa masukin!
+            if (Article::where('url_hash', $urlHash)->exists()) {
                 $skipped++;
+                continue; // Langsung lanjut ke link berikutnya, ga perlu mancing error SQL
             }
+
+            // Kalau lolos cek (berarti belum ada), baru kita eksekusi Create
+            Article::create([
+                'publisher_id' => $publisher->id,
+                'url' => trim($item['url']),
+                'url_hash' => $urlHash,
+                'published_at' => $item['published_at'],
+            ]);
+
+            $count++;
 
         } catch (\Exception $e) {
             Log::error("Gagal simpan artikel dari modal rekap: " . $e->getMessage());
@@ -232,10 +231,10 @@ $saveData = function () {
     $this->showPreviewModal = false;
     $this->bulkLinks = '';
 
-    // Pesan notifikasi yang lebih informatif
+    // Pesan notifikasi
     $message = "Mantap! {$count} artikel berhasil masuk rekap.";
     if ($skipped > 0) {
-        $message .= " ({$skipped} data aman karena sudah tersimpan sebelumnya).";
+        $message .= " ({$skipped} data dilewati karena sudah ada).";
     }
 
     $this->dispatch('notify', ['type' => 'success', 'message' => $message]);
