@@ -80,8 +80,7 @@ $generatePreview = function () {
                 if ($response->successful()) {
                     $html = $response->body();
 
-                    // PENINGKATAN: Pola Regex Super Fleksibel
-                    // Mendukung kutip tunggal/ganda dan atribut terbalik (content di awal atau akhir)
+                    // PENINGKATAN: Pola Regex Super Fleksibel (Ditambah pola untuk teks di dalam Tag HTML)
                     $patterns = [
                         '/<meta[^>]*property=[\'"]article:published_time[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
                         '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*property=[\'"]article:published_time[\'"]/i',
@@ -91,18 +90,23 @@ $generatePreview = function () {
                         '/"datePublished"\s*:\s*[\'"]([^\'"]+)[\'"]/i',
                         '/<meta[^>]*name=[\'"]pubdate[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
                         '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*name=[\'"]pubdate[\'"]/i',
-                        '/<meta[^>]*name=[\'"]date[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i'
+                        '/<meta[^>]*name=[\'"]date[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
+                        // --- POLA BARU UNTUK KASUSMU ---
+                        // Menangkap tanggal berupa teks di dalam tag yg punya kata 'datePublished'
+                        '/<[^>]*itemprop=[\'"][^\'"]*datePublished[^\'"]*[\'"][^>]*>\s*([^<]+)\s*<\/[^>]+>/i',
+                        // Menangkap cadangan jika pakai class 'updated' (Khas WordPress lama)
+                        '/<[^>]*class=[\'"][^\'"]*(?:updated|entry-date)[^\'"]*[\'"][^>]*>\s*([0-9]{4}-[0-9]{2}-[0-9]{2}[^<]*)\s*<\/[^>]+>/i'
                     ];
 
                     foreach ($patterns as $pattern) {
                         if (preg_match($pattern, $html, $matches)) {
-                            // Coba parse tanggal yang ditemukan. Jika valid, gunakan itu.
                             try {
-                                $parsedDate = Carbon::parse($matches[1]);
-                                // Cegah tahun aneh seperti 1970 (error parsing)
+                                // PERUBAHAN DI SINI: Tambahkan trim() agar spasi/enter bawaan HTML tidak ikut ke-parse
+                                $parsedDate = Carbon::parse(trim($matches[1]));
+
                                 if ($parsedDate->year > 2000) {
                                     $publishedDate = $parsedDate->toDateString();
-                                    break; // Berhenti mencari jika sudah ketemu format valid
+                                    break; // Berhenti mencari jika ketemu
                                 }
                             } catch (\Exception $e) {
                                 // Lanjut ke pola berikutnya jika parsing gagal
@@ -416,7 +420,6 @@ $export = function () {
                                 </td>
                                 @php
                                     $total = 0;
-                                    // OPTIMASI: Pastikan tidak melakukan query lagi di dalam loop
                                     $articlesByDay = $publisher->articles->groupBy(function($article) {
                                         return Carbon::parse($article->published_at)->day;
                                     });
@@ -446,7 +449,6 @@ $export = function () {
                             </td>
                             @php
                                 $grandTotal = 0;
-                                // OPTIMASI: Menghitung total harian menggunakan collection yang sudah dimuat, bukan query baru
                                 $allArticles = $this->publishers->pluck('articles')->flatten();
                                 $allArticlesByDay = $allArticles->groupBy(function($article) {
                                     return Carbon::parse($article->published_at)->day;
@@ -499,7 +501,6 @@ $export = function () {
                                 menyimpan.</p>
                         </div>
 
-                        {{-- Tombol Tutup X dengan SweetAlert --}}
                         <button type="button" class="btn-close"
                                 x-data
                                 @click="
@@ -565,7 +566,6 @@ $export = function () {
                     </div>
 
                     <div class="modal-footer border-top-0 px-4 py-3 bg-transparent">
-                        {{-- Tombol Batal Text dengan SweetAlert --}}
                         <button type="button" class="btn btn-light"
                                 style="background-color: var(--ezmenu-border-color); color: var(--ezmenu-text-main); border: none; border-radius: 0.75rem;"
                                 x-data
@@ -599,6 +599,5 @@ $export = function () {
         </div>
     @endif
 
-    {{-- Script CDN SweetAlert2 --}}
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </div>

@@ -152,24 +152,26 @@ $recrawl = function ($id) {
                 '/<meta[^>]*property=[\'"]article:published_time[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
                 '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*property=[\'"]article:published_time[\'"]/i',
                 '/<meta[^>]*itemprop=[\'"]datePublished[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
-                '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*itemprop=[\'"]datePublished[\'"]/i', // <-- Ini untuk format barumu
+                '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*itemprop=[\'"]datePublished[\'"]/i',
                 '/<time[^>]*datetime=[\'"]([^\'"]+)[\'"]/i',
                 '/"datePublished"\s*:\s*[\'"]([^\'"]+)[\'"]/i',
                 '/<meta[^>]*name=[\'"]pubdate[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
                 '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*name=[\'"]pubdate[\'"]/i',
-                '/<meta[^>]*name=[\'"]date[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i'
+                '/<meta[^>]*name=[\'"]date[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
+                '/<[^>]*itemprop=[\'"][^\'"]*datePublished[^\'"]*[\'"][^>]*>\s*([^<]+)\s*<\/[^>]+>/i',
+                '/<[^>]*class=[\'"][^\'"]*(?:updated|entry-date)[^\'"]*[\'"][^>]*>\s*([0-9]{4}-[0-9]{2}-[0-9]{2}[^<]*)\s*<\/[^>]+>/i'
             ];
 
             foreach ($patterns as $pattern) {
                 if (preg_match($pattern, $html, $matches)) {
                     try {
-                        $parsedDate = Carbon::parse($matches[1]);
+                        $parsedDate = Carbon::parse(trim($matches[1]));
                         if ($parsedDate->year > 2000) {
                             $publishedDate = $parsedDate->toDateString();
                             break;
                         }
                     } catch (\Exception $e) {
-                        // abaikan dan cari pola lain jika gagal parse
+                        // abaikan dan cari pola lain
                     }
                 }
             }
