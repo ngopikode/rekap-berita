@@ -16,26 +16,34 @@ state(['search' => '']);
 // State Modal
 state(['showModal' => false, 'modalMode' => 'add', 'formId' => null, 'formUrl' => '', 'formPublisherId' => '', 'formPublishedAt' => '']);
 
-// Computed: Ambil list publisher untuk dropdown di form
+// OPTIMASI: Ambil data publisher cukup kolom 'id' dan 'name' saja
 $publishers = computed(function () {
-    return Publisher::where('user_id', auth()->id())->orderBy('name', 'asc')->get();
+    return Publisher::where('user_id', auth()->id())
+        ->select('id', 'name')
+        ->orderBy('name', 'asc')
+        ->get();
 });
 
-// Computed: Ambil daftar artikel dengan pagination
+// OPTIMASI: Performa Query Artikel
 $articles = computed(function () {
     $userId = auth()->id();
-    return Article::whereHas('publisher', function ($q) use ($userId) {
-        $q->where('user_id', $userId);
-    })
+    $publisherIds = Publisher::where('user_id', $userId)->pluck('id');
+
+    return Article::query()
+        ->select('id', 'publisher_id', 'url', 'published_at')
+        ->with('publisher:id,name')
+        ->whereIn('publisher_id', $publisherIds)
         ->when($this->search, function ($q) {
-            $q->where('url', 'like', '%' . $this->search . '%')
-                ->orWhereHas('publisher', function ($q2) {
-                    $q2->where('name', 'like', '%' . $this->search . '%');
-                });
+            $search = '%' . trim($this->search) . '%';
+            $q->where(function ($query) use ($search) {
+                $query->where('url', 'like', $search)
+                    ->orWhereHas('publisher', function ($sub) use ($search) {
+                        $sub->where('name', 'like', $search);
+                    });
+            });
         })
-        ->with('publisher')
         ->orderBy('published_at', 'desc')
-        ->paginate(15); // Menampilkan 15 data per halaman
+        ->paginate(15);
 });
 
 // Reset ke halaman 1 saat mengetik pencarian
@@ -55,16 +63,13 @@ $openAddModal = function () {
 
 // Aksi: Buka modal edit
 $openEditModal = function ($id) {
-    $article = Article::whereHas('publisher', function ($q) {
-        $q->where('user_id', auth()->id());
-    })->findOrFail($id);
+    $publisherIds = Publisher::where('user_id', auth()->id())->pluck('id');
+    $article = Article::whereIn('publisher_id', $publisherIds)->findOrFail($id);
 
     $this->modalMode = 'edit';
     $this->formId = $article->id;
     $this->formUrl = $article->url;
     $this->formPublisherId = $article->publisher_id;
-
-    // Perbaikan di baris ini: pastikan diformat ke YYYY-MM-DD
     $this->formPublishedAt = Carbon::parse($article->published_at)->toDateString();
 
     $this->showModal = true;
@@ -86,7 +91,7 @@ $save = function () {
     }
 
     $urlHash = md5($this->formUrl);
-    $existingArticle = Article::where('url_hash', $urlHash)->first();
+    $existingArticle = Article::where('url_hash', $urlHash)->select('id')->first();
 
     if ($this->modalMode === 'add') {
         if ($existingArticle) {
@@ -122,9 +127,8 @@ $save = function () {
 
 // Aksi: Hapus Data
 $delete = function ($id) {
-    $article = Article::whereHas('publisher', function ($q) {
-        $q->where('user_id', auth()->id());
-    })->find($id);
+    $publisherIds = Publisher::where('user_id', auth()->id())->pluck('id');
+    $article = Article::whereIn('publisher_id', $publisherIds)->find($id);
 
     if ($article) {
         $article->delete();
@@ -174,8 +178,10 @@ $delete = function ($id) {
             <h3 class="font-serif fw-bold mb-0 text-dark">Daftar Berita</h3>
             <p class="text-muted small mb-0">Kelola semua tautan berita yang telah terekap.</p>
         </div>
-        <button wire:click="openAddModal" class="btn btn-brand fw-medium" style="border-radius: 0.75rem;">
-            <i class="bi bi-plus-lg me-1"></i> Tambah Manual
+        <button wire:click="openAddModal" class="btn btn-brand fw-medium" style="border-radius: 0.75rem;"
+                wire:loading.attr="disabled" wire:target="openAddModal">
+            <span wire:loading.remove wire:target="openAddModal"><i class="bi bi-plus-lg me-1"></i> Tambah Manual</span>
+            <span wire:loading wire:target="openAddModal"><span class="spinner-border spinner-border-sm me-1"></span> Membuka...</span>
         </button>
     </div>
 
@@ -186,14 +192,28 @@ $delete = function ($id) {
             <h5 class="font-serif fw-bold mb-0 text-dark">Semua Tautan</h5>
 
             <div class="input-group" style="width: 100%; max-width: 300px;">
-                <span class="input-group-text bg-transparent border-end-0 text-muted"><i
-                        class="bi bi-search"></i></span>
-                <input type="text" wire:model.live.debounce.300ms="search" class="form-control border-start-0 ps-0"
+                <span class="input-group-text bg-transparent border-end-0 text-muted">
+                    <div wire:loading wire:target="search" class="spinner-border spinner-border-sm text-primary"
+                         role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <i wire:loading.remove wire:target="search" class="bi bi-search"></i>
+                </span>
+                <input type="text" wire:model.live.debounce.500ms="search" class="form-control border-start-0 ps-0"
                        placeholder="Cari link atau nama media...">
             </div>
         </div>
 
-        <div class="card-body p-0 mt-3">
+        <div class="card-body p-0 mt-3 position-relative">
+            {{-- Overlay Loading Tabel --}}
+            <div wire:loading.flex wire:target="gotoPage, nextPage, previousPage"
+                 class="position-absolute w-100 h-100 justify-content-center align-items-center"
+                 style="background-color: rgba(255, 255, 255, 0.6); z-index: 10; backdrop-filter: blur(2px);">
+                <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+
             @if($this->articles->isEmpty())
                 <div class="text-center py-5">
                     <i class="bi bi-link-45deg text-muted" style="font-size: 3rem;"></i>
@@ -216,7 +236,8 @@ $delete = function ($id) {
                         </thead>
                         <tbody>
                         @foreach ($this->articles as $article)
-                            <tr style="border-bottom: 1px solid var(--ezmenu-border-color);">
+                            <tr wire:key="article-row-{{ $article->id }}"
+                                style="border-bottom: 1px solid var(--ezmenu-border-color);">
                                 <td class="text-start px-4 fw-bold text-dark" style="font-size: 0.9rem;">
                                     {{ $article->publisher->name }}
                                 </td>
@@ -234,20 +255,63 @@ $delete = function ($id) {
                                     </span>
                                 </td>
                                 <td class="text-end px-4">
+
+                                    {{-- TOMBOL EDIT dengan Loading --}}
                                     <button wire:click="openEditModal({{ $article->id }})"
+                                            wire:loading.attr="disabled"
+                                            wire:target="openEditModal({{ $article->id }})"
                                             class="btn btn-sm btn-light text-primary me-1"
-                                            style="border: 1px solid var(--ezmenu-border-color); border-radius: 0.5rem;"
+                                            style="border: 1px solid var(--ezmenu-border-color); border-radius: 0.5rem; width: 32px; height: 32px;"
                                             title="Edit">
-                                        <i class="bi bi-pencil-square"></i>
+                                        <span wire:loading.remove wire:target="openEditModal({{ $article->id }})">
+                                            <i class="bi bi-pencil-square"></i>
+                                        </span>
+                                        <span wire:loading wire:target="openEditModal({{ $article->id }})">
+                                            <span class="spinner-border spinner-border-sm" role="status"
+                                                  aria-hidden="true"></span>
+                                        </span>
                                     </button>
 
+                                    {{-- TOMBOL HAPUS dengan SWEETALERT2 & Loading --}}
                                     <button x-data
-                                            @click="if(confirm('Yakin ingin menghapus tautan berita ini?')) { $wire.delete({{ $article->id }}) }"
+                                            @click="
+                                                Swal.fire({
+                                                    title: 'Yakin ingin menghapus?',
+                                                    text: 'Tautan berita yang dihapus tidak bisa dikembalikan!',
+                                                    icon: 'warning',
+                                                    showCancelButton: true,
+                                                    confirmButtonColor: '#dc3545',
+                                                    cancelButtonColor: '#6c757d',
+                                                    confirmButtonText: 'Ya, Hapus!',
+                                                    cancelButtonText: 'Batal',
+                                                    reverseButtons: true,
+                                                    customClass: {
+                                                        popup: 'rounded-4 shadow-lg border-0'
+                                                    }
+                                                }).then((result) => {
+                                                    if (result.isConfirmed) {
+                                                        $wire.delete({{ $article->id }});
+                                                    }
+                                                });
+                                            "
+                                            wire:loading.attr="disabled"
+                                            wire:target="delete({{ $article->id }})"
                                             class="btn btn-sm btn-light text-danger"
-                                            style="border: 1px solid var(--ezmenu-border-color); border-radius: 0.5rem;"
+                                            style="border: 1px solid var(--ezmenu-border-color); border-radius: 0.5rem; width: 32px; height: 32px;"
                                             title="Hapus">
-                                        <i class="bi bi-trash"></i>
+
+                                        {{-- Ikon Tampil Saat Normal --}}
+                                        <span wire:loading.remove wire:target="delete({{ $article->id }})">
+                                            <i class="bi bi-trash"></i>
+                                        </span>
+
+                                        {{-- Spinner Tampil Saat Livewire Memproses Hapus Data --}}
+                                        <span wire:loading wire:target="delete({{ $article->id }})">
+                                            <span class="spinner-border spinner-border-sm" role="status"
+                                                  aria-hidden="true"></span>
+                                        </span>
                                     </button>
+
                                 </td>
                             </tr>
                         @endforeach
@@ -257,10 +321,9 @@ $delete = function ($id) {
             @endif
         </div>
 
-        {{-- Pagination (jika data lebih dari 15) --}}
         @if($this->articles->hasPages())
             <div class="card-footer bg-transparent border-top-0 px-4 py-3">
-                {{ $this->articles->links('pagination::bootstrap-5') }}
+                {{ $this->articles->links() }}
             </div>
         @endif
     </div>
@@ -296,7 +359,8 @@ $delete = function ($id) {
                                     <select class="form-select" wire:model="formPublisherId" required>
                                         <option value="">-- Pilih Nama Media --</option>
                                         @foreach($this->publishers as $pub)
-                                            <option value="{{ $pub->id }}">{{ $pub->name }}</option>
+                                            <option wire:key="pub-{{ $pub->id }}"
+                                                    value="{{ $pub->id }}">{{ $pub->name }}</option>
                                         @endforeach
                                     </select>
                                 </div>
@@ -312,8 +376,13 @@ $delete = function ($id) {
                                         style="background-color: var(--ezmenu-border-color); color: var(--ezmenu-text-main); border: none; border-radius: 0.75rem;"
                                         wire:click="closeModal">Batal
                                 </button>
-                                <button type="submit" class="btn btn-brand px-4" style="border-radius: 0.75rem;">
-                                    <i class="bi bi-save me-1"></i> Simpan
+
+                                <button type="submit" class="btn btn-brand px-4" style="border-radius: 0.75rem;"
+                                        wire:loading.attr="disabled" wire:target="save">
+                                    <span wire:loading.remove wire:target="save"><i class="bi bi-save me-1"></i> Simpan</span>
+                                    <span wire:loading wire:target="save"><span
+                                            class="spinner-border spinner-border-sm me-1" role="status"
+                                            aria-hidden="true"></span> Menyimpan...</span>
                                 </button>
                             </div>
                         </form>
@@ -323,4 +392,6 @@ $delete = function ($id) {
         </div>
     @endif
 
+    {{-- Script CDN SweetAlert2 --}}
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </div>

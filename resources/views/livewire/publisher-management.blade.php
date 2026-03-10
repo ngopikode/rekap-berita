@@ -2,9 +2,11 @@
 
 use App\Models\Article;
 use App\Models\Publisher;
-use function Livewire\Volt\{state, computed, layout};
+use Livewire\WithPagination;
+use function Livewire\Volt\{state, computed, layout, uses};
 
-// Mengatur layout bawaan aplikasi
+// Mengaktifkan fitur Pagination & Layout
+uses([WithPagination::class]);
 layout('components.layouts.app');
 
 // State Pencarian
@@ -16,14 +18,22 @@ state(['showModal' => false, 'modalMode' => 'add', 'formId' => null, 'formName' 
 // State Modal Merge (Penggabungan)
 state(['showMergeModal' => false, 'mergeTargetId' => null, 'mergeTargetName' => '']);
 
-// Computed: Ambil daftar media + jumlah artikelnya
+// Computed: Ambil daftar media + jumlah artikelnya dengan Pagination
 $publishers = computed(function () {
     return Publisher::where('user_id', auth()->id())
-        ->when($this->search, fn($q) => $q->where('name', 'like', '%' . $this->search . '%'))
+        ->when($this->search, function ($q) {
+            $search = '%' . trim($this->search) . '%';
+            $q->where('name', 'like', $search);
+        })
         ->withCount('articles')
         ->orderBy('name', 'asc')
-        ->get();
+        ->paginate(15); // OPTIMASI: Gunakan paginate agar tidak berat saat data ribuan
 });
+
+// Reset pagination saat pencarian berubah
+$updatingSearch = function () {
+    $this->resetPage();
+};
 
 // Aksi: Buka modal tambah
 $openAddModal = function () {
@@ -50,15 +60,18 @@ $closeModal = function () {
 
 // Aksi: Simpan Data (Dengan Cek Duplikat & Merge)
 $save = function () {
-    $this->formName = strtoupper(trim($this->formName));
+    $this->formName = strtoupper(trim($this->formName ?? ''));
 
     if (empty($this->formName)) {
         $this->dispatch('notify', ['type' => 'danger', 'message' => 'Nama media tidak boleh kosong.']);
         return;
     }
 
-    // Cek apakah nama yang diinput sudah ada di database
-    $existingPub = Publisher::where('user_id', auth()->id())->where('name', $this->formName)->first();
+    // Cek apakah nama yang diinput sudah ada di database (Optimasi select('id', 'name'))
+    $existingPub = Publisher::where('user_id', auth()->id())
+        ->where('name', $this->formName)
+        ->select('id', 'name')
+        ->first();
 
     if ($this->modalMode === 'add') {
         if ($existingPub) {
@@ -153,26 +166,46 @@ $delete = function ($id) {
             <h3 class="font-serif fw-bold mb-0 text-dark">Manajemen Media</h3>
             <p class="text-muted small mb-0">Kelola daftar penerbit berita dan penggabungan data.</p>
         </div>
-        <button wire:click="openAddModal" class="btn btn-brand fw-medium" style="border-radius: 0.75rem;">
-            <i class="bi bi-plus-lg me-1"></i> Tambah Media
+
+        {{-- TOMBOL TAMBAH DENGAN LOADING --}}
+        <button wire:click="openAddModal" class="btn btn-brand fw-medium" style="border-radius: 0.75rem;"
+                wire:loading.attr="disabled" wire:target="openAddModal">
+            <span wire:loading.remove wire:target="openAddModal"><i class="bi bi-plus-lg me-1"></i> Tambah Media</span>
+            <span wire:loading wire:target="openAddModal"><span class="spinner-border spinner-border-sm me-1"></span> Membuka...</span>
         </button>
     </div>
 
     {{-- Tabel Card --}}
-    <div class="card position-relative">
+    <div class="card position-relative mb-4">
         <div
-            class="card-header bg-transparent border-bottom-0 p-4 pb-0 d-flex justify-content-between align-items-center">
+            class="card-header bg-transparent border-bottom-0 p-4 pb-0 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
             <h5 class="font-serif fw-bold mb-0 text-dark">Daftar Media</h5>
 
-            <div class="input-group" style="width: 250px;">
-                <span class="input-group-text bg-transparent border-end-0 text-muted"><i
-                        class="bi bi-search"></i></span>
-                <input type="text" wire:model.live.debounce.300ms="search" class="form-control border-start-0 ps-0"
+            <div class="input-group" style="width: 100%; max-width: 300px;">
+                <span class="input-group-text bg-transparent border-end-0 text-muted">
+                    {{-- SPINNER PENCARIAN --}}
+                    <div wire:loading wire:target="search" class="spinner-border spinner-border-sm text-primary"
+                         role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <i wire:loading.remove wire:target="search" class="bi bi-search"></i>
+                </span>
+                <input type="text" wire:model.live.debounce.500ms="search" class="form-control border-start-0 ps-0"
                        placeholder="Cari media...">
             </div>
         </div>
 
-        <div class="card-body p-0 mt-3">
+        <div class="card-body p-0 mt-3 position-relative">
+
+            {{-- OVERLAY LOADING TABEL --}}
+            <div wire:loading.flex wire:target="gotoPage, nextPage, previousPage"
+                 class="position-absolute w-100 h-100 justify-content-center align-items-center"
+                 style="background-color: rgba(255, 255, 255, 0.6); z-index: 10; backdrop-filter: blur(2px);">
+                <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+
             @if($this->publishers->isEmpty())
                 <div class="text-center py-5">
                     <i class="bi bi-hdd-network text-muted" style="font-size: 3rem;"></i>
@@ -193,29 +226,67 @@ $delete = function ($id) {
                         </thead>
                         <tbody>
                         @foreach ($this->publishers as $pub)
-                            <tr style="border-bottom: 1px solid var(--ezmenu-border-color);">
+                            {{-- WIRE:KEY WAJIB ADA --}}
+                            <tr wire:key="pub-{{ $pub->id }}"
+                                style="border-bottom: 1px solid var(--ezmenu-border-color);">
                                 <td class="text-start px-4 fw-medium text-dark">{{ $pub->name }}</td>
                                 <td>
-                                        <span class="badge text-dark bg-light px-3 py-2"
-                                              style="border: 1px solid var(--ezmenu-border-color);">
-                                            {{ $pub->articles_count }} Artikel
-                                        </span>
+                                    <span class="badge text-dark bg-light px-3 py-2"
+                                          style="border: 1px solid var(--ezmenu-border-color);">
+                                        {{ $pub->articles_count }} Artikel
+                                    </span>
                                 </td>
                                 <td class="text-end px-4">
+
+                                    {{-- TOMBOL EDIT + LOADING --}}
                                     <button wire:click="openEditModal({{ $pub->id }})"
+                                            wire:loading.attr="disabled"
+                                            wire:target="openEditModal({{ $pub->id }})"
                                             class="btn btn-sm btn-light text-primary me-1"
-                                            style="border: 1px solid var(--ezmenu-border-color); border-radius: 0.5rem;"
+                                            style="border: 1px solid var(--ezmenu-border-color); border-radius: 0.5rem; width: 32px; height: 32px;"
                                             title="Edit">
-                                        <i class="bi bi-pencil-square"></i>
+                                        <span wire:loading.remove wire:target="openEditModal({{ $pub->id }})">
+                                            <i class="bi bi-pencil-square"></i>
+                                        </span>
+                                        <span wire:loading wire:target="openEditModal({{ $pub->id }})">
+                                            <span class="spinner-border spinner-border-sm" role="status"
+                                                  aria-hidden="true"></span>
+                                        </span>
                                     </button>
 
-                                    {{-- Alpine JS untuk konfirmasi Hapus --}}
+                                    {{-- TOMBOL HAPUS + SWEETALERT2 + LOADING --}}
                                     <button x-data
-                                            @click="if(confirm('Yakin ingin menghapus media ini beserta {{ $pub->articles_count }} artikelnya?')) { $wire.delete({{ $pub->id }}) }"
+                                            @click="
+                                                Swal.fire({
+                                                    title: 'Yakin ingin menghapus?',
+                                                    html: 'Media <b>{{ $pub->name }}</b> beserta <b class=\'text-danger\'>{{ $pub->articles_count }} artikelnya</b> akan terhapus permanen!',
+                                                    icon: 'warning',
+                                                    showCancelButton: true,
+                                                    confirmButtonColor: '#dc3545',
+                                                    cancelButtonColor: '#6c757d',
+                                                    confirmButtonText: 'Ya, Hapus!',
+                                                    cancelButtonText: 'Batal',
+                                                    reverseButtons: true,
+                                                    customClass: { popup: 'rounded-4 shadow-lg border-0' }
+                                                }).then((result) => {
+                                                    if (result.isConfirmed) {
+                                                        $wire.delete({{ $pub->id }});
+                                                    }
+                                                });
+                                            "
+                                            wire:loading.attr="disabled"
+                                            wire:target="delete({{ $pub->id }})"
                                             class="btn btn-sm btn-light text-danger"
-                                            style="border: 1px solid var(--ezmenu-border-color); border-radius: 0.5rem;"
+                                            style="border: 1px solid var(--ezmenu-border-color); border-radius: 0.5rem; width: 32px; height: 32px;"
                                             title="Hapus">
-                                        <i class="bi bi-trash"></i>
+
+                                        <span wire:loading.remove wire:target="delete({{ $pub->id }})">
+                                            <i class="bi bi-trash"></i>
+                                        </span>
+                                        <span wire:loading wire:target="delete({{ $pub->id }})">
+                                            <span class="spinner-border spinner-border-sm" role="status"
+                                                  aria-hidden="true"></span>
+                                        </span>
                                     </button>
                                 </td>
                             </tr>
@@ -225,6 +296,13 @@ $delete = function ($id) {
                 </div>
             @endif
         </div>
+
+        {{-- PAGINATION --}}
+        @if($this->publishers->hasPages())
+            <div class="card-footer bg-transparent border-top-0 px-4 py-3">
+                {{ $this->publishers->links() }}
+            </div>
+        @endif
     </div>
 
     {{-- MODAL TAMBAH / EDIT --}}
@@ -256,8 +334,14 @@ $delete = function ($id) {
                                         style="background-color: var(--ezmenu-border-color); color: var(--ezmenu-text-main); border: none; border-radius: 0.75rem;"
                                         wire:click="closeModal">Batal
                                 </button>
-                                <button type="submit" class="btn btn-brand px-4" style="border-radius: 0.75rem;">
-                                    Simpan
+
+                                {{-- TOMBOL SIMPAN + LOADING --}}
+                                <button type="submit" class="btn btn-brand px-4" style="border-radius: 0.75rem;"
+                                        wire:loading.attr="disabled" wire:target="save">
+                                    <span wire:loading.remove wire:target="save">Simpan</span>
+                                    <span wire:loading wire:target="save"><span
+                                            class="spinner-border spinner-border-sm me-1" role="status"
+                                            aria-hidden="true"></span> Menyimpan...</span>
                                 </button>
                             </div>
                         </form>
@@ -297,9 +381,14 @@ $delete = function ($id) {
                                     style="background-color: var(--ezmenu-border-color); color: var(--ezmenu-text-main); border: none; border-radius: 0.75rem;"
                                     wire:click="closeModal">Batal
                             </button>
+
+                            {{-- TOMBOL MERGE + LOADING --}}
                             <button type="button" class="btn btn-warning fw-bold px-4" style="border-radius: 0.75rem;"
-                                    wire:click="executeMerge">
-                                Ya, Gabungkan
+                                    wire:click="executeMerge" wire:loading.attr="disabled" wire:target="executeMerge">
+                                <span wire:loading.remove wire:target="executeMerge">Ya, Gabungkan</span>
+                                <span wire:loading wire:target="executeMerge"><span
+                                        class="spinner-border spinner-border-sm me-1" role="status"
+                                        aria-hidden="true"></span> Memproses...</span>
                             </button>
                         </div>
                     </div>
@@ -308,4 +397,6 @@ $delete = function ($id) {
         </div>
     @endif
 
+    {{-- Script CDN SweetAlert2 --}}
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </div>
