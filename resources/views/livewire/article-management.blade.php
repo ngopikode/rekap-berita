@@ -147,11 +147,22 @@ $recrawl = function ($id) {
             $publishedDate = null;
             $foundDateString = null;
 
-            // 1. PRIORITAS TINGGI: Cari Meta Tag resmi di seluruh halaman (Meta ada di <head>)
+            // 1. PRIORITAS TINGGI: Cari Meta Tag resmi di seluruh halaman
             $metaPatterns = [
+                // Standar Open Graph (Normal & Terbalik)
                 '/<meta[^>]*property=[\'"]article:published_time[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
                 '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*property=[\'"]article:published_time[\'"]/i',
+
+                // Itemprop Schema (Normal & Terbalik) -> INI YANG TADI TIDAK SENGAJA TERHAPUS!
                 '/<meta[^>]*itemprop=[\'"]datePublished[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
+                '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*itemprop=[\'"]datePublished[\'"]/i',
+
+                // Standar Pubdate / Date (Normal & Terbalik)
+                '/<meta[^>]*name=[\'"]pubdate[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
+                '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*name=[\'"]pubdate[\'"]/i',
+                '/<meta[^>]*name=[\'"]date[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
+
+                // JSON-LD Schema
                 '/"datePublished"\s*:\s*[\'"]([^\'"]+)[\'"]/i'
             ];
 
