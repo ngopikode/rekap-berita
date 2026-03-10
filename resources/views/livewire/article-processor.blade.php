@@ -53,23 +53,15 @@ $generatePreview = function () {
     $skippedCount = 0;
     $fallbackDate = Carbon::create($this->selectedYear, $this->selectedMonth, now()->day)->toDateString();
 
-    // Ambil ID User saat ini
-    $userId = auth()->id();
+    $userId = auth()->id(); // Ambil ID user di luar loop
 
     foreach ($urls as $url) {
-        // PERBAIKAN: Buat Hash unik khusus untuk user ini, dan hash lama (untuk jaga-jaga data lama)
-        $newUrlHash = md5($url . '_' . $userId);
-        $oldUrlHash = md5($url);
+        // HANYA MENGGUNAKAN HASH BARU
+        $urlHash = md5($url . '_' . $userId);
 
-        // Cek duplikat HANYA di lingkup data milik user ini saja
-        $isDuplicate = Article::where(function ($query) use ($newUrlHash, $oldUrlHash) {
-            $query->where('url_hash', $newUrlHash)->orWhere('url_hash', $oldUrlHash);
-        })
-            ->whereHas('publisher', function ($q) use ($userId) {
-                $q->where('user_id', $userId);
-            })->exists();
-
-        if ($isDuplicate) {
+        // OPTIMASI EKSTREM: Tidak perlu lagi whereHas.
+        // Karena hash-nya sudah mengandung User ID, kalau hash ini ada, pasti itu milik user ini!
+        if (Article::where('url_hash', $urlHash)->exists()) {
             $skippedCount++;
             continue;
         }

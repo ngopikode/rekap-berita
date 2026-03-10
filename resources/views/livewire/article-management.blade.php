@@ -93,16 +93,12 @@ $save = function () {
     }
 
     $userId = auth()->id();
-    $newUrlHash = md5($this->formUrl . '_' . $userId);
-    $oldUrlHash = md5($this->formUrl);
 
-    // Cek duplikat HANYA di lingkup data milik user ini
-    $existingArticle = Article::where(function ($q) use ($newUrlHash, $oldUrlHash) {
-        $q->where('url_hash', $newUrlHash)->orWhere('url_hash', $oldUrlHash);
-    })
-        ->whereHas('publisher', function ($q) use ($userId) {
-            $q->where('user_id', $userId);
-        })->first();
+    // HANYA MENGGUNAKAN HASH BARU
+    $urlHash = md5($this->formUrl . '_' . $userId);
+
+    // OPTIMASI EKSTREM: Langsung cek hash-nya saja, sangat cepat!
+    $existingArticle = Article::where('url_hash', $urlHash)->select('id')->first();
 
     if ($this->modalMode === 'add') {
         if ($existingArticle) {
@@ -113,7 +109,7 @@ $save = function () {
         Article::create([
             'publisher_id' => $this->formPublisherId,
             'url' => $this->formUrl,
-            'url_hash' => $newUrlHash, // Pakai Hash Baru
+            'url_hash' => $urlHash,
             'published_at' => $this->formPublishedAt,
         ]);
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Berita berhasil ditambahkan manual.']);
@@ -127,7 +123,7 @@ $save = function () {
         Article::where('id', $this->formId)->update([
             'publisher_id' => $this->formPublisherId,
             'url' => $this->formUrl,
-            'url_hash' => $newUrlHash, // Pakai Hash Baru
+            'url_hash' => $urlHash,
             'published_at' => $this->formPublishedAt,
         ]);
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Data berita berhasil diperbarui.']);
