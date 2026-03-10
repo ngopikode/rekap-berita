@@ -53,14 +53,19 @@ $generatePreview = function () {
     $skippedCount = 0;
     $fallbackDate = Carbon::create($this->selectedYear, $this->selectedMonth, now()->day)->toDateString();
 
-    // 🌟 PERBAIKAN PERFORMA: Ambil ID Publisher milik user ini sekali saja di luar looping
-    $userPublisherIds = \App\Models\Publisher::where('user_id', auth()->id())->pluck('id');
+    // Ambil ID User saat ini
+    $userId = auth()->id();
 
     foreach ($urls as $url) {
         $urlHash = md5($url);
 
-        // OPTIMASI: Cek apakah URL Hash ini ada di dalam daftar ID Publisher milik user ini
-        if (Article::where('url_hash', $urlHash)->whereIn('publisher_id', $userPublisherIds)->exists()) {
+        // PERBAIKAN: Cek Duplikat Lebih Aman dengan whereHas
+        $isDuplicate = Article::where('url_hash', $urlHash)
+            ->whereHas('publisher', function ($q) use ($userId) {
+                $q->where('user_id', $userId);
+            })->exists();
+
+        if ($isDuplicate) {
             $skippedCount++;
             continue;
         }
@@ -86,20 +91,13 @@ $generatePreview = function () {
 
                 // 1. PRIORITAS TINGGI: Cari Meta Tag resmi di seluruh halaman
                 $metaPatterns = [
-                    // Standar Open Graph (Normal & Terbalik)
                     '/<meta[^>]*property=[\'"]article:published_time[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
                     '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*property=[\'"]article:published_time[\'"]/i',
-
-                    // Itemprop Schema (Normal & Terbalik) -> INI YANG TADI TIDAK SENGAJA TERHAPUS!
                     '/<meta[^>]*itemprop=[\'"]datePublished[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
                     '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*itemprop=[\'"]datePublished[\'"]/i',
-
-                    // Standar Pubdate / Date (Normal & Terbalik)
                     '/<meta[^>]*name=[\'"]pubdate[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
                     '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*name=[\'"]pubdate[\'"]/i',
                     '/<meta[^>]*name=[\'"]date[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
-
-                    // JSON-LD Schema
                     '/"datePublished"\s*:\s*[\'"]([^\'"]+)[\'"]/i'
                 ];
 
@@ -110,7 +108,7 @@ $generatePreview = function () {
                     }
                 }
 
-                // 2. PRIORITAS KEDUA: Jika Meta tidak ada, cari di KONTEN UTAMA saja (Hindari Jebakan Navbar/Sidebar)
+                // 2. PRIORITAS KEDUA: Jika Meta tidak ada, cari di KONTEN UTAMA saja
                 if (!$foundDateString) {
                     $mainHtml = $html;
 
@@ -123,19 +121,10 @@ $generatePreview = function () {
                     }
 
                     $textPatterns = [
-                        // 1. Tag <time datetime="...">
                         '/<time[^>]*datetime=[\'"]([^\'"]+)[\'"]/i',
-
-                        // 2. Tag apa pun yang punya atribut datetime="..." (Contoh: <span datetime="...">)
                         '/<[^>]*datetime=[\'"]([^\'"]+)[\'"]/i',
-
-                        // 3. INI YANG TADI HILANG! Tag apa pun di dalam HTML yang punya itemprop="datePublished"
                         '/<[^>]*itemprop=[\'"][^\'"]*datePublished[^\'"]*[\'"][^>]*>(.*?)<\/(?:span|div|time|p|a|li|b|strong)>/is',
-
-                        // 4. Tag class umum pembungkus tanggal (kutip tunggal/ganda). Ditambah class 'updated' khas web kamu
                         '/<[^>]*class=[\'"][^\'"]*(?:entry-date|post-date|published|post_date|date|updated)[^\'"]*[\'"][^>]*>(.*?)<\/(?:span|div|time|p|a|li|b|strong)>/is',
-
-                        // 5. Sapu jagat tulisan tanggal biasa
                         '/([0-9]{1,2}\s+(?:Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember)\s+[0-9]{4})/i'
                     ];
 
@@ -557,6 +546,7 @@ $export = function () {
                                 menyimpan.</p>
                         </div>
 
+                        {{-- PERBAIKAN: Tombol Tutup (X) dengan SWAL --}}
                         <button type="button" class="btn-close"
                                 x-data
                                 @click="
@@ -569,14 +559,12 @@ $export = function () {
                                         cancelButtonText: 'Kembali',
                                         confirmButtonColor: '#dc3545',
                                         reverseButtons: true,
-                                        // PERBAIKAN Z-INDEX DI SINI:
-                                        customClass: {
-                                            popup: 'rounded-4 border-0 shadow-lg'
-                                        },
+                                        customClass: { popup: 'rounded-4 border-0 shadow-lg' },
                                         didOpen: () => {
-                                            // Memaksa SweetAlert berada di atas semua elemen dengan z-index ekstrem
                                             document.querySelector('.swal2-container').style.zIndex = '100000';
                                         }
+                                    }).then((res) => {
+                                        if(res.isConfirmed) $wire.cancelPreview();
                                     })
                                 "></button>
                     </div>
@@ -627,6 +615,8 @@ $export = function () {
                     </div>
 
                     <div class="modal-footer border-top-0 px-4 py-3 bg-transparent">
+
+                        {{-- PERBAIKAN: Tombol Batal Text dengan SWAL --}}
                         <button type="button" class="btn btn-light"
                                 style="background-color: var(--ezmenu-border-color); color: var(--ezmenu-text-main); border: none; border-radius: 0.75rem;"
                                 x-data
@@ -640,7 +630,10 @@ $export = function () {
                                         cancelButtonText: 'Kembali',
                                         confirmButtonColor: '#dc3545',
                                         reverseButtons: true,
-                                        customClass: { popup: 'rounded-4 border-0' }
+                                        customClass: { popup: 'rounded-4 border-0 shadow-lg' },
+                                        didOpen: () => {
+                                            document.querySelector('.swal2-container').style.zIndex = '100000';
+                                        }
                                     }).then((res) => {
                                         if(res.isConfirmed) $wire.cancelPreview();
                                     })
