@@ -38,7 +38,7 @@ $publishers = computed(function () {
         ->get();
 });
 
-// Fungsi 1: Generate Preview (Dengan Scraper Tanggal Lanjutan)
+// Fungsi 1: Generate Preview (Dengan Scraper Tanggal Lanjutan & Canggih)
 $generatePreview = function () {
     $urls = collect(explode("\n", $this->bulkLinks))
         ->map(fn($url) => trim($url))
@@ -80,13 +80,18 @@ $generatePreview = function () {
                 if ($response->successful()) {
                     $html = $response->body();
 
-                    // PENINGKATAN: Pola Regex Berlapis untuk mencari tanggal
+                    // PENINGKATAN: Pola Regex Super Fleksibel
+                    // Mendukung kutip tunggal/ganda dan atribut terbalik (content di awal atau akhir)
                     $patterns = [
-                        '/<meta property="article:published_time" content="([^"]+)"/', // Standar Open Graph
-                        '/<time[^>]*datetime="([^"]+)"/', // Tag Time HTML5
-                        '/"datePublished"\s*:\s*"([^"]+)"/', // JSON-LD Schema
-                        '/<meta name="pubdate" content="([^"]+)"/', // Meta Pubdate Lama
-                        '/<meta name="date" content="([^"]+)"/' // Meta Date Standar
+                        '/<meta[^>]*property=[\'"]article:published_time[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
+                        '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*property=[\'"]article:published_time[\'"]/i',
+                        '/<meta[^>]*itemprop=[\'"]datePublished[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
+                        '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*itemprop=[\'"]datePublished[\'"]/i',
+                        '/<time[^>]*datetime=[\'"]([^\'"]+)[\'"]/i',
+                        '/"datePublished"\s*:\s*[\'"]([^\'"]+)[\'"]/i',
+                        '/<meta[^>]*name=[\'"]pubdate[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
+                        '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*name=[\'"]pubdate[\'"]/i',
+                        '/<meta[^>]*name=[\'"]date[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i'
                     ];
 
                     foreach ($patterns as $pattern) {
