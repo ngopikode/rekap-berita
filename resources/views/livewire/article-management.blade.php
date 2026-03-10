@@ -146,13 +146,18 @@ $recrawl = function ($id) {
             $html = $response->body();
             $publishedDate = null;
 
-            // Pola pencarian tanggal (sama seperti di scraper massal)
+            // PENINGKATAN: Pola pencarian tanggal super fleksibel
+            // Mendukung kutip tunggal/ganda dan atribut terbalik (content di awal atau akhir)
             $patterns = [
-                '/<meta property="article:published_time" content="([^"]+)"/',
-                '/<time[^>]*datetime="([^"]+)"/',
-                '/"datePublished"\s*:\s*"([^"]+)"/',
-                '/<meta name="pubdate" content="([^"]+)"/',
-                '/<meta name="date" content="([^"]+)"/'
+                '/<meta[^>]*property=[\'"]article:published_time[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
+                '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*property=[\'"]article:published_time[\'"]/i',
+                '/<meta[^>]*itemprop=[\'"]datePublished[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
+                '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*itemprop=[\'"]datePublished[\'"]/i', // <-- Ini untuk format barumu
+                '/<time[^>]*datetime=[\'"]([^\'"]+)[\'"]/i',
+                '/"datePublished"\s*:\s*[\'"]([^\'"]+)[\'"]/i',
+                '/<meta[^>]*name=[\'"]pubdate[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
+                '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*name=[\'"]pubdate[\'"]/i',
+                '/<meta[^>]*name=[\'"]date[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i'
             ];
 
             foreach ($patterns as $pattern) {
@@ -164,7 +169,7 @@ $recrawl = function ($id) {
                             break;
                         }
                     } catch (\Exception $e) {
-                        // abaikan dan cari pola lain
+                        // abaikan dan cari pola lain jika gagal parse
                     }
                 }
             }
@@ -319,7 +324,7 @@ $delete = function ($id) {
                                 </td>
                                 <td class="text-end px-4">
 
-                                    {{-- TOMBOL CRAWL ULANG (BARU) --}}
+                                    {{-- TOMBOL CRAWL ULANG --}}
                                     <button wire:click="recrawl({{ $article->id }})"
                                             wire:loading.attr="disabled"
                                             wire:target="recrawl({{ $article->id }})"
