@@ -72,7 +72,7 @@ $generatePreview = function () {
             $host = parse_url($url, PHP_URL_HOST);
             if (!$host) continue;
 
-            $publisherName = strtoupper(str_replace(['www.', '.com', '.co.id', '.id', '.net', '.site', '.my.id', '.info'], '', $host));
+            $publisherName = strtoupper(str_replace(['www.', '.com', '.co.id', '.my.id', '.id', '.net', '.site', '.info'], '', $host));
             $publishedDate = $fallbackDate;
 
             // Tambahkan header User-Agent agar tidak diblokir oleh media tertentu
@@ -560,7 +560,7 @@ $export = function () {
                         <button type="button" class="btn-close"
                                 x-data
                                 @click="
-                                    Swal.fire({
+                                   Swal.fire({
                                         title: 'Batalkan input?',
                                         text: 'Data yang sudah diproses akan hilang.',
                                         icon: 'warning',
@@ -569,9 +569,14 @@ $export = function () {
                                         cancelButtonText: 'Kembali',
                                         confirmButtonColor: '#dc3545',
                                         reverseButtons: true,
-                                        customClass: { popup: 'rounded-4 border-0' }
-                                    }).then((res) => {
-                                        if(res.isConfirmed) $wire.cancelPreview();
+                                        // PERBAIKAN Z-INDEX DI SINI:
+                                        customClass: {
+                                            popup: 'rounded-4 border-0 shadow-lg'
+                                        },
+                                        didOpen: () => {
+                                            // Memaksa SweetAlert berada di atas semua elemen dengan z-index ekstrem
+                                            document.querySelector('.swal2-container').style.zIndex = '100000';
+                                        }
                                     })
                                 "></button>
                     </div>
