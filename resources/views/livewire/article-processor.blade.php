@@ -192,6 +192,8 @@ $generatePreview = function () {
 // Fungsi 2: Simpan Data
 $saveData = function () {
     $count = 0;
+    $skipped = 0; // Menghitung data yang dilewati karena sudah ada
+
     foreach ($this->previewData as $item) {
         try {
             // Validasi manual sebelum simpan
@@ -202,16 +204,25 @@ $saveData = function () {
                 ['user_id' => auth()->id()]
             );
 
-            Article::create([
-                'publisher_id' => $publisher->id,
-                'url' => trim($item['url']),
+            $urlHash = md5(trim($item['url']) . '_' . auth()->id());
 
-                // PERBAIKAN: Gunakan hash yang digabung dengan User ID
-                'url_hash' => md5(trim($item['url']) . '_' . auth()->id()),
+            // PERBAIKAN: Gunakan firstOrCreate agar kebal terhadap klik dobel / data sisa
+            $article = Article::firstOrCreate(
+                ['url_hash' => $urlHash], // Kunci pencariannya
+                [ // Data yang diisi jika kuncinya belum ada
+                    'publisher_id' => $publisher->id,
+                    'url' => trim($item['url']),
+                    'published_at' => $item['published_at'],
+                ]
+            );
 
-                'published_at' => $item['published_at'],
-            ]);
-            $count++;
+            // Cek apakah data ini benar-benar baru dimasukkan atau cuma data lama
+            if ($article->wasRecentlyCreated) {
+                $count++;
+            } else {
+                $skipped++;
+            }
+
         } catch (\Exception $e) {
             Log::error("Gagal simpan artikel dari modal rekap: " . $e->getMessage());
         }
@@ -221,7 +232,13 @@ $saveData = function () {
     $this->showPreviewModal = false;
     $this->bulkLinks = '';
 
-    $this->dispatch('notify', ['type' => 'success', 'message' => "Mantap! {$count} artikel berhasil masuk rekap."]);
+    // Pesan notifikasi yang lebih informatif
+    $message = "Mantap! {$count} artikel berhasil masuk rekap.";
+    if ($skipped > 0) {
+        $message .= " ({$skipped} data aman karena sudah tersimpan sebelumnya).";
+    }
+
+    $this->dispatch('notify', ['type' => 'success', 'message' => $message]);
 };
 
 // Fungsi 3: Hapus item
