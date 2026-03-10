@@ -57,10 +57,14 @@ $generatePreview = function () {
     $userId = auth()->id();
 
     foreach ($urls as $url) {
-        $urlHash = md5($url);
+        // PERBAIKAN: Buat Hash unik khusus untuk user ini, dan hash lama (untuk jaga-jaga data lama)
+        $newUrlHash = md5($url . '_' . $userId);
+        $oldUrlHash = md5($url);
 
-        // PERBAIKAN: Cek Duplikat Lebih Aman dengan whereHas
-        $isDuplicate = Article::where('url_hash', $urlHash)
+        // Cek duplikat HANYA di lingkup data milik user ini saja
+        $isDuplicate = Article::where(function ($query) use ($newUrlHash, $oldUrlHash) {
+            $query->where('url_hash', $newUrlHash)->orWhere('url_hash', $oldUrlHash);
+        })
             ->whereHas('publisher', function ($q) use ($userId) {
                 $q->where('user_id', $userId);
             })->exists();
@@ -209,7 +213,10 @@ $saveData = function () {
             Article::create([
                 'publisher_id' => $publisher->id,
                 'url' => trim($item['url']),
-                'url_hash' => md5(trim($item['url'])),
+
+                // PERBAIKAN: Gunakan hash yang digabung dengan User ID
+                'url_hash' => md5(trim($item['url']) . '_' . auth()->id()),
+
                 'published_at' => $item['published_at'],
             ]);
             $count++;

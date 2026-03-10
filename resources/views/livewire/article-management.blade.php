@@ -92,33 +92,42 @@ $save = function () {
         return;
     }
 
-    $urlHash = md5($this->formUrl);
-    $existingArticle = Article::where('url_hash', $urlHash)->select('id')->first();
+    $userId = auth()->id();
+    $newUrlHash = md5($this->formUrl . '_' . $userId);
+    $oldUrlHash = md5($this->formUrl);
+
+    // Cek duplikat HANYA di lingkup data milik user ini
+    $existingArticle = Article::where(function ($q) use ($newUrlHash, $oldUrlHash) {
+        $q->where('url_hash', $newUrlHash)->orWhere('url_hash', $oldUrlHash);
+    })
+        ->whereHas('publisher', function ($q) use ($userId) {
+            $q->where('user_id', $userId);
+        })->first();
 
     if ($this->modalMode === 'add') {
         if ($existingArticle) {
-            $this->dispatch('notify', ['type' => 'warning', 'message' => 'URL berita ini sudah pernah disimpan!']);
+            $this->dispatch('notify', ['type' => 'warning', 'message' => 'URL berita ini sudah pernah Anda simpan!']);
             return;
         }
 
         Article::create([
             'publisher_id' => $this->formPublisherId,
             'url' => $this->formUrl,
-            'url_hash' => $urlHash,
+            'url_hash' => $newUrlHash, // Pakai Hash Baru
             'published_at' => $this->formPublishedAt,
         ]);
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Berita berhasil ditambahkan manual.']);
 
     } else { // Mode Edit
         if ($existingArticle && $existingArticle->id !== $this->formId) {
-            $this->dispatch('notify', ['type' => 'warning', 'message' => 'URL ini sudah digunakan di data berita lain!']);
+            $this->dispatch('notify', ['type' => 'warning', 'message' => 'URL ini sudah Anda gunakan di data berita lain!']);
             return;
         }
 
         Article::where('id', $this->formId)->update([
             'publisher_id' => $this->formPublisherId,
             'url' => $this->formUrl,
-            'url_hash' => $urlHash,
+            'url_hash' => $newUrlHash, // Pakai Hash Baru
             'published_at' => $this->formPublishedAt,
         ]);
         $this->dispatch('notify', ['type' => 'success', 'message' => 'Data berita berhasil diperbarui.']);
