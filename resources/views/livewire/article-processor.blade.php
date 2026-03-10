@@ -81,21 +81,26 @@ $generatePreview = function () {
                     $html = $response->body();
 
                     // PENINGKATAN: Pola Regex Super Fleksibel (Ditambah pola untuk teks di dalam Tag HTML)
+                    // PENINGKATAN: Pola Regex "Sapu Jagat"
                     $patterns = [
+                        // 1. Standar Open Graph & Meta Tags
                         '/<meta[^>]*property=[\'"]article:published_time[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
                         '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*property=[\'"]article:published_time[\'"]/i',
                         '/<meta[^>]*itemprop=[\'"]datePublished[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
                         '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*itemprop=[\'"]datePublished[\'"]/i',
-                        '/<time[^>]*datetime=[\'"]([^\'"]+)[\'"]/i',
-                        '/"datePublished"\s*:\s*[\'"]([^\'"]+)[\'"]/i',
                         '/<meta[^>]*name=[\'"]pubdate[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
                         '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*name=[\'"]pubdate[\'"]/i',
                         '/<meta[^>]*name=[\'"]date[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
-                        // --- POLA BARU UNTUK KASUSMU ---
-                        // Menangkap tanggal berupa teks di dalam tag yg punya kata 'datePublished'
+
+                        // 2. JSON-LD Schema
+                        '/"datePublished"\s*:\s*[\'"]([^\'"]+)[\'"]/i',
+
+                        // 3. POLA BARU UNTUK KASUSMU: Menangkap atribut 'datetime' di tag APA PUN (<time>, <span>, <div>, dll)
+                        '/<[^>]*datetime=[\'"]([^\'"]+)[\'"]/i',
+
+                        // 4. Menangkap teks langsung di dalam tag yang punya class/itemprop khusus tanggal
                         '/<[^>]*itemprop=[\'"][^\'"]*datePublished[^\'"]*[\'"][^>]*>\s*([^<]+)\s*<\/[^>]+>/i',
-                        // Menangkap cadangan jika pakai class 'updated' (Khas WordPress lama)
-                        '/<[^>]*class=[\'"][^\'"]*(?:updated|entry-date)[^\'"]*[\'"][^>]*>\s*([0-9]{4}-[0-9]{2}-[0-9]{2}[^<]*)\s*<\/[^>]+>/i'
+                        '/<[^>]*class=[\'"][^\'"]*(?:published|post-date|updated|entry-date)[^\'"]*[\'"][^>]*>\s*([0-9]{4}-[0-9]{2}-[0-9]{2}[^<]*)\s*<\/[^>]+>/i'
                     ];
 
                     foreach ($patterns as $pattern) {
