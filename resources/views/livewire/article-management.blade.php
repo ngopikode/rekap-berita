@@ -148,7 +148,7 @@ $recrawl = function ($id) {
 
             // PENINGKATAN: Pola pencarian tanggal super fleksibel
             // Mendukung kutip tunggal/ganda dan atribut terbalik (content di awal atau akhir)
-            // PENINGKATAN: Pola Regex "Sapu Jagat"
+            // PENINGKATAN: Pola Regex "Sapu Jagat" Tahap 3
             $patterns = [
                 // 1. Standar Open Graph & Meta Tags
                 '/<meta[^>]*property=[\'"]article:published_time[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
@@ -162,24 +162,43 @@ $recrawl = function ($id) {
                 // 2. JSON-LD Schema
                 '/"datePublished"\s*:\s*[\'"]([^\'"]+)[\'"]/i',
 
-                // 3. POLA BARU UNTUK KASUSMU: Menangkap atribut 'datetime' di tag APA PUN (<time>, <span>, <div>, dll)
+                // 3. Menangkap atribut 'datetime' di tag APA PUN
                 '/<[^>]*datetime=[\'"]([^\'"]+)[\'"]/i',
 
-                // 4. Menangkap teks langsung di dalam tag yang punya class/itemprop khusus tanggal
-                '/<[^>]*itemprop=[\'"][^\'"]*datePublished[^\'"]*[\'"][^>]*>\s*([^<]+)\s*<\/[^>]+>/i',
-                '/<[^>]*class=[\'"][^\'"]*(?:published|post-date|updated|entry-date)[^\'"]*[\'"][^>]*>\s*([0-9]{4}-[0-9]{2}-[0-9]{2}[^<]*)\s*<\/[^>]+>/i'
+                // 4. Menangkap teks di dalam class tanggal, walaupun terhalang tag <i> (icon)
+                '/<[^>]*class=[\'"][^\'"]*(?:entry-date|post-date|published|updated)[^\'"]*[\'"][^>]*>(.*?)<\/(?:span|div|time|p|a)>/is',
+
+                // 5. POLA EKSTREM: Cari tulisan format "06 Maret 2026" di mana pun halamannya berada
+                '/([0-9]{1,2}\s+(?:Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember)\s+[0-9]{4})/i'
             ];
 
             foreach ($patterns as $pattern) {
                 if (preg_match($pattern, $html, $matches)) {
                     try {
-                        $parsedDate = Carbon::parse(trim($matches[1]));
+                        // 1. Bersihkan teks dari tag HTML berantakan (seperti <i> icon) dan spasi berlebih
+                        $dateString = trim(strip_tags($matches[1]));
+
+                        // 2. Kamus Terjemahan Bulan Indonesia -> Inggris agar Carbon tidak error
+                        $idMonths = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+                        $enMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+                        // 3. Hapus nama hari (Senin, Selasa...) dan Zona Waktu (WIB, WITA, WIT) karena mengganggu parser
+                        $dateString = preg_replace('/(?:Senin|Selasa|Rabu|Kamis|Jumat|Sabtu|Minggu)[,\s]+/i', '', $dateString);
+                        $dateString = preg_replace('/(?:WIB|WITA|WIT)/i', '', $dateString);
+
+                        // 4. Ubah "Maret" menjadi "March", dst.
+                        $dateString = str_ireplace($idMonths, $enMonths, $dateString);
+
+                        // 5. Baru parse ke Carbon
+                        $parsedDate = Carbon::parse(trim($dateString));
+
+                        // Cegah parsing ngawur (pastikan tahun logis)
                         if ($parsedDate->year > 2000) {
                             $publishedDate = $parsedDate->toDateString();
-                            break;
+                            break; // Berhenti mencari karena sudah sukses
                         }
                     } catch (\Exception $e) {
-                        // abaikan dan cari pola lain
+                        // Lanjut ke pola berikutnya jika parsing gagal
                     }
                 }
             }
