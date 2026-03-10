@@ -79,77 +79,86 @@ $generatePreview = function () {
 
                 if ($response->successful()) {
                     $html = $response->body();
+                    $foundDateString = null;
 
-                    // PENINGKATAN: Pola Regex Super Fleksibel (Ditambah pola untuk teks di dalam Tag HTML)
-                    // PENINGKATAN: Pola Regex "Sapu Jagat" Tahap 3
-                    $patterns = [
-                        // 1. Standar Open Graph & Meta Tags
+                    // 1. PRIORITAS TINGGI: Cari Meta Tag resmi di seluruh halaman
+                    $metaPatterns = [
                         '/<meta[^>]*property=[\'"]article:published_time[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
                         '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*property=[\'"]article:published_time[\'"]/i',
                         '/<meta[^>]*itemprop=[\'"]datePublished[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
-                        '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*itemprop=[\'"]datePublished[\'"]/i',
-                        '/<meta[^>]*name=[\'"]pubdate[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
-                        '/<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]*name=[\'"]pubdate[\'"]/i',
-                        '/<meta[^>]*name=[\'"]date[\'"][^>]*content=[\'"]([^\'"]+)[\'"]/i',
-
-                        // 2. JSON-LD Schema
-                        '/"datePublished"\s*:\s*[\'"]([^\'"]+)[\'"]/i',
-
-                        // 3. Menangkap atribut 'datetime' di tag APA PUN
-                        '/<[^>]*datetime=[\'"]([^\'"]+)[\'"]/i',
-
-                        // 4. Menangkap teks di dalam class tanggal, walaupun terhalang tag <i> (icon)
-                        '/<[^>]*class=[\'"][^\'"]*(?:entry-date|post-date|published|updated)[^\'"]*[\'"][^>]*>(.*?)<\/(?:span|div|time|p|a)>/is',
-
-                        // 5. POLA EKSTREM: Cari tulisan format "06 Maret 2026" di mana pun halamannya berada
-                        '/([0-9]{1,2}\s+(?:Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember)\s+[0-9]{4})/i'
+                        '/"datePublished"\s*:\s*[\'"]([^\'"]+)[\'"]/i'
                     ];
 
-                    foreach ($patterns as $pattern) {
+                    foreach ($metaPatterns as $pattern) {
                         if (preg_match($pattern, $html, $matches)) {
-                            try {
-                                // 1. Bersihkan teks dari tag HTML berantakan (seperti <i> icon) dan spasi berlebih
-                                $dateString = trim(strip_tags($matches[1]));
+                            $foundDateString = $matches[1];
+                            break;
+                        }
+                    }
 
-                                // 2. Kamus Terjemahan Bulan Indonesia -> Inggris agar Carbon tidak error
-                                $idMonths = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-                                $enMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                    // 2. PRIORITAS KEDUA: Jika Meta tidak ada, cari di KONTEN UTAMA saja (Hindari Jebakan Navbar/Sidebar)
+                    if (!$foundDateString) {
+                        $mainHtml = $html;
 
-                                // 3. Hapus nama hari (Senin, Selasa...) dan Zona Waktu (WIB, WITA, WIT) karena mengganggu parser
-                                $dateString = preg_replace('/(?:Senin|Selasa|Rabu|Kamis|Jumat|Sabtu|Minggu)[,\s]+/i', '', $dateString);
-                                $dateString = preg_replace('/(?:WIB|WITA|WIT)/i', '', $dateString);
+                        // Isolasi hanya area <main> atau <article>
+                        if (preg_match('/<(main|article)[^>]*>(.*?)<\/\1>/is', $html, $contentMatch)) {
+                            $mainHtml = $contentMatch[2];
+                        } else {
+                            // Jika tidak ada tag main, buang manual area navbar, header, dan sidebar
+                            $mainHtml = preg_replace('/<(nav|header|aside|footer)[^>]*>.*?<\/\1>/is', '', $html);
+                        }
 
-                                // 4. Ubah "Maret" menjadi "March", dst.
-                                $dateString = str_ireplace($idMonths, $enMonths, $dateString);
+                        $textPatterns = [
+                            '/<time[^>]*datetime=[\'"]([^\'"]+)[\'"]/i',
+                            '/<[^>]*class=[\'"][^\'"]*(?:entry-date|post-date|published|post_date|date)[^\'"]*[\'"][^>]*>(.*?)<\/(?:span|div|time|p|a|li)>/is',
+                            '/([0-9]{1,2}\s+(?:Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember)\s+[0-9]{4})/i'
+                        ];
 
-                                // 5. Baru parse ke Carbon
-                                $parsedDate = Carbon::parse(trim($dateString));
-
-                                // Cegah parsing ngawur (pastikan tahun logis)
-                                if ($parsedDate->year > 2020) {
-                                    $publishedDate = $parsedDate->toDateString();
-                                    break; // Berhenti mencari karena sudah sukses
-                                }
-                            } catch (\Exception $e) {
-                                // Lanjut ke pola berikutnya jika parsing gagal
+                        foreach ($textPatterns as $pattern) {
+                            if (preg_match($pattern, $mainHtml, $matches)) {
+                                $foundDateString = $matches[1];
+                                break;
                             }
                         }
                     }
+
+                    // 3. PROSES PEMBERSIHAN TANGGAL
+                    if ($foundDateString) {
+                        try {
+                            $dateString = trim(strip_tags($foundDateString));
+                            $idMonths = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember', 'Agt', 'Sep', 'Okt', 'Nop', 'Nov', 'Des'];
+                            $enMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'Aug', 'Sep', 'Oct', 'Nov', 'Nov', 'Dec'];
+                            $dateString = str_ireplace($idMonths, $enMonths, $dateString);
+
+                            // Paksa hanya ambil YYYY-MM-DD atau DD Month YYYY
+                            $cleanDate = $dateString;
+                            if (preg_match('/([0-9]{4}-[0-9]{2}-[0-9]{2})/', $dateString, $isoMatch)) {
+                                $cleanDate = $isoMatch[1];
+                            } elseif (preg_match('/([0-9]{1,2})\s+([A-Za-z]+)\s+([0-9]{4})/', $dateString, $textMatch)) {
+                                $cleanDate = $textMatch[1] . ' ' . $textMatch[2] . ' ' . $textMatch[3];
+                            }
+
+                            $parsedDate = Carbon::parse($cleanDate);
+                            // Pastikan tahun logis
+                            if ($parsedDate->year > 2000 && $parsedDate->year <= now()->year + 1) {
+                                $publishedDate = $parsedDate->toDateString();
+                            }
+                        } catch (\Exception $e) {
+                            // Abaikan jika gagal
+                        }
+                    }
                 }
+
+                $tempData[] = [
+                    'url' => $url,
+                    'publisher_name' => $publisherName,
+                    'published_at' => $publishedDate,
+                ];
+
             } catch (\Exception $e) {
-                Log::warning("Gagal scrape URL: $url - " . $e->getMessage());
+                continue;
             }
-
-            $tempData[] = [
-                'url' => $url,
-                'publisher_name' => $publisherName,
-                'published_at' => $publishedDate,
-            ];
-
-        } catch (\Exception $e) {
-            continue;
         }
-    }
 
     if (empty($tempData) && $skippedCount > 0) {
         $this->dispatch('notify', ['type' => 'warning', 'message' => "Selesai! Tapi {$skippedCount} link sudah pernah diinput sebelumnya."]);
@@ -171,58 +180,58 @@ $generatePreview = function () {
 };
 
 // Fungsi 2: Simpan Data
-$saveData = function () {
-    $count = 0;
-    foreach ($this->previewData as $item) {
-        try {
-            // Validasi manual sebelum simpan
-            if (empty(trim($item['publisher_name'])) || empty($item['published_at'])) continue;
+    $saveData = function () {
+        $count = 0;
+        foreach ($this->previewData as $item) {
+            try {
+                // Validasi manual sebelum simpan
+                if (empty(trim($item['publisher_name'])) || empty($item['published_at'])) continue;
 
-            $publisher = Publisher::firstOrCreate(
-                ['name' => strtoupper(trim($item['publisher_name'])), 'user_id' => auth()->id()],
-                ['user_id' => auth()->id()]
-            );
+                $publisher = Publisher::firstOrCreate(
+                    ['name' => strtoupper(trim($item['publisher_name'])), 'user_id' => auth()->id()],
+                    ['user_id' => auth()->id()]
+                );
 
-            Article::create([
-                'publisher_id' => $publisher->id,
-                'url' => trim($item['url']),
-                'url_hash' => md5(trim($item['url'])),
-                'published_at' => $item['published_at'],
-            ]);
-            $count++;
-        } catch (\Exception $e) {
-            Log::error("Gagal simpan artikel dari modal rekap: " . $e->getMessage());
+                Article::create([
+                    'publisher_id' => $publisher->id,
+                    'url' => trim($item['url']),
+                    'url_hash' => md5(trim($item['url'])),
+                    'published_at' => $item['published_at'],
+                ]);
+                $count++;
+            } catch (\Exception $e) {
+                Log::error("Gagal simpan artikel dari modal rekap: " . $e->getMessage());
+            }
         }
-    }
 
-    $this->previewData = [];
-    $this->showPreviewModal = false;
-    $this->bulkLinks = '';
+        $this->previewData = [];
+        $this->showPreviewModal = false;
+        $this->bulkLinks = '';
 
-    $this->dispatch('notify', ['type' => 'success', 'message' => "Mantap! {$count} artikel berhasil masuk rekap."]);
-};
+        $this->dispatch('notify', ['type' => 'success', 'message' => "Mantap! {$count} artikel berhasil masuk rekap."]);
+    };
 
 // Fungsi 3: Hapus item
-$removeItem = function ($index) {
-    unset($this->previewData[$index]);
-    $this->previewData = array_values($this->previewData);
-    if (empty($this->previewData)) $this->showPreviewModal = false;
-};
+    $removeItem = function ($index) {
+        unset($this->previewData[$index]);
+        $this->previewData = array_values($this->previewData);
+        if (empty($this->previewData)) $this->showPreviewModal = false;
+    };
 
 // Fungsi 4: Batal
-$cancelPreview = function () {
-    $this->previewData = [];
-    $this->showPreviewModal = false;
-};
+    $cancelPreview = function () {
+        $this->previewData = [];
+        $this->showPreviewModal = false;
+    };
 
 // Fungsi 5: Export
-$export = function () {
-    $monthName = Carbon::create(null, $this->selectedMonth)->translatedFormat('F');
-    $fileName = "rekap-berita-{$monthName}-{$this->selectedYear}.xlsx";
-    return Excel::download(new ArticlesExport($this->selectedMonth, $this->selectedYear), $fileName);
-};
+    $export = function () {
+        $monthName = Carbon::create(null, $this->selectedMonth)->translatedFormat('F');
+        $fileName = "rekap-berita-{$monthName}-{$this->selectedYear}.xlsx";
+        return Excel::download(new ArticlesExport($this->selectedMonth, $this->selectedYear), $fileName);
+    };
 
-?>
+    ?>
 
 <div>
     @push('custom-styles')
