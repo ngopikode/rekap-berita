@@ -39,7 +39,9 @@ class ArticlesExport implements FromView, ShouldAutoSize, WithStyles
         $publishers = Publisher::where('user_id', auth()->id())
             ->with(['articles' => function ($query) use ($startOfMonth, $endOfMonth) {
                 $query->whereBetween('published_at', [$startOfMonth, $endOfMonth]);
-            }])->get();
+            }])
+            ->orderBy('name', 'asc')
+            ->get();
 
         // Hitung Total Per Tanggal untuk Footer
         $userPublisherIds = $publishers->pluck('id');
