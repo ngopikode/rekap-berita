@@ -27,7 +27,7 @@ $publishers = computed(function () {
         })
         ->withCount('articles')
         ->orderBy('name', 'asc')
-        ->paginate(15); // OPTIMASI: Gunakan paginate agar tidak berat saat data ribuan
+        ->paginate(2); // OPTIMASI: Gunakan paginate agar tidak berat saat data ribuan
 });
 
 // Reset pagination saat pencarian berubah
