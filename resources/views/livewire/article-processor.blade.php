@@ -264,7 +264,7 @@ $cancelPreview = function () {
 // Fungsi 5: Export
 $export = function () {
     $monthName = Carbon::create(null, $this->selectedMonth)->translatedFormat('F');
-    $fileName = "rekap-berita-{$monthName}-{$this->selectedYear}.xlsx";
+    $fileName = "Rekap Berita Online $monthName $this->selectedYear ✅.xlsx";
     return Excel::download(new ArticlesExport($this->selectedMonth, $this->selectedYear), $fileName);
 };
 
