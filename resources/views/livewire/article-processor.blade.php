@@ -73,6 +73,10 @@ $generatePreview = function () {
             $host = parse_url($url, PHP_URL_HOST);
             if (!$host) continue;
 
+            // Hilangkan sub-domain 'www.' untuk standarisasi domain
+            $pureDomain = str_replace('www.', '', strtolower($host));
+
+            // Buat default nama display (bisa diedit user nantinya)
             $publisherName = strtoupper(str_replace(['www.', '.com', '.co.id', '.my.id', '.id', '.net', '.site', '.info'], '', $host));
             $publishedDate = $fallbackDate;
 
@@ -159,8 +163,10 @@ $generatePreview = function () {
                 }
             }
 
+            // SIMPAN DOMAIN KE DALAM STATE PREVIEW (Hidden dari user)
             $tempData[] = [
                 'url' => $url,
+                'domain' => $pureDomain, // <--- TAMBAHAN BARU
                 'publisher_name' => $publisherName,
                 'published_at' => $publishedDate,
             ];
@@ -199,9 +205,11 @@ $saveData = function () {
             // Validasi manual sebelum simpan
             if (empty(trim($item['publisher_name'])) || empty($item['published_at'])) continue;
 
+            // PERBAIKAN: Cari Publisher berdasarkan DOMAIN, bukan Name.
+            // Jika ketemu, update namanya dengan yang diinput user. Jika belum, buat baru.
             $publisher = Publisher::firstOrCreate(
-                ['name' => strtoupper(trim($item['publisher_name'])), 'user_id' => auth()->id()],
-                ['user_id' => auth()->id()]
+                ['domain' => $item['domain'], 'user_id' => auth()->id()], // Kunci Pencarian Utama
+                ['name' => strtoupper(trim($item['publisher_name']))]     // Data jika belum ada
             );
 
             $urlHash = md5(trim($item['url']) . '_' . auth()->id());
